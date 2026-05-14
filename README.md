@@ -1,3 +1,11 @@
+
+Originally from here: `https://github.com/mrexodia/kilo-pi-provider/tree/master`
+
+I forked it quickly and added kilo organization support as well as proper model reasoning support.
+
+
+
+
 # kilo-pi-provider
 
 Kilo provider extension for Pi. Access 300+ AI models through the Kilo Gateway.
