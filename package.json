@@ -1,5 +1,5 @@
 {
-  "name": "@mrexodia/kilo-pi-provider",
+  "name": "@kilocode/kilo-pi-provider",
   "version": "1.2.0",
   "type": "module",
   "keywords": [
@@ -13,6 +13,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mrexodia/kilo-pi-provider.git"
+    "url": "git+https://github.com/Kilo-Org/kilo-pi-provider.git"
   }
 }

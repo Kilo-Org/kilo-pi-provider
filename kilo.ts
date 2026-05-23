@@ -5,7 +5,7 @@
  * Uses device code flow for browser-based authentication.
  *
  * Usage:
- *   pi install git:github.com/mrexodia/kilo-pi-provider
+ *   pi install git:github.com/Kilo-Org/kilo-pi-provider
  *   # Then /login kilo, or set KILO_API_KEY=...
  */
 
