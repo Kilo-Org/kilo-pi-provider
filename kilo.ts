@@ -18,10 +18,7 @@ import type {
   OAuthCredentials,
   OAuthLoginCallbacks,
 } from "@earendil-works/pi-ai";
-import type {
-  ExtensionAPI,
-  ProviderModelConfig,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
 
 // =============================================================================
@@ -62,18 +59,12 @@ function readStoredKiloCredentials(): OAuthCredentials | undefined {
   }
 }
 
-function getCredentialOrganizationId(
-  credentials?: OAuthCredentials,
-): string | undefined {
+function getCredentialOrganizationId(credentials?: OAuthCredentials): string | undefined {
   const accountId = credentials?.accountId;
-  return typeof accountId === "string" && accountId.trim()
-    ? accountId
-    : undefined;
+  return typeof accountId === "string" && accountId.trim() ? accountId : undefined;
 }
 
-function getEffectiveOrganizationId(
-  credentials?: OAuthCredentials,
-): string | undefined {
+function getEffectiveOrganizationId(credentials?: OAuthCredentials): string | undefined {
   return getCredentialOrganizationId(credentials) ?? getEnvOrganizationId();
 }
 
@@ -139,10 +130,7 @@ async function selectKiloOrganization(
 
   const organizations = profile.organizations ?? [];
   const envOrganizationId = getEnvOrganizationId();
-  if (
-    envOrganizationId &&
-    organizations.some((org) => org.id === envOrganizationId)
-  ) {
+  if (envOrganizationId && organizations.some((org) => org.id === envOrganizationId)) {
     return envOrganizationId;
   }
   if (!callbacks.onSelect || organizations.length === 0) {
@@ -295,10 +283,7 @@ async function loginKilo(
         throw new Error("Authorization approved but no token received");
       }
       callbacks.onProgress?.("Login successful!");
-      const organizationId = await selectKiloOrganization(
-        result.token,
-        callbacks,
-      );
+      const organizationId = await selectKiloOrganization(result.token, callbacks);
       return {
         refresh: result.token,
         access: result.token,
@@ -414,7 +399,7 @@ function shouldUseResponsesApi(m: OpenRouterModel): boolean {
   // routes current OpenAI reasoning/frontier models through the Responses API;
   // using chat completions for these yields: "please use any of: responses".
   const id = m.id.toLowerCase();
-  const shortId = id.includes("/") ? (id.split("/").pop() ?? id) : id;
+  const shortId = id.includes("/") ? id.split("/").pop() ?? id : id;
   return (
     shortId === "gpt-5" ||
     shortId.startsWith("gpt-5.") ||
@@ -449,10 +434,7 @@ function getKiloModelCompat(
     compat.cacheControlFormat = "anthropic";
   }
 
-  if (
-    m.id === "deepseek/deepseek-v4-flash" ||
-    m.id === "deepseek/deepseek-v4-pro"
-  ) {
+  if (m.id === "deepseek/deepseek-v4-flash" || m.id === "deepseek/deepseek-v4-pro") {
     compat.requiresReasoningContentOnAssistantMessages = true;
   }
 
@@ -477,8 +459,7 @@ function thinkingLevelMapFromVariants(
   if (!variants || Object.keys(variants).length === 0) return undefined;
 
   const map: Partial<Record<PiThinkingLevel, string | null>> = {};
-  const off =
-    mapVariantEffort(variants, "none") ?? mapVariantEffort(variants, "instant");
+  const off = mapVariantEffort(variants, "none") ?? mapVariantEffort(variants, "instant");
   if (off !== undefined) map.off = off;
 
   for (const level of ["minimal", "low", "medium", "high", "xhigh"] as const) {
@@ -537,9 +518,7 @@ function mapOpenRouterModel(m: OpenRouterModel): ProviderModelConfig {
     m.top_provider?.max_completion_tokens ??
     m.max_completion_tokens ??
     Math.ceil(m.context_length * 0.2);
-  const api = shouldUseResponsesApi(m)
-    ? ("openai-responses" as const)
-    : undefined;
+  const api = shouldUseResponsesApi(m) ? ("openai-responses" as const) : undefined;
 
   return {
     id: m.id,
@@ -623,10 +602,7 @@ const KILO_PROVIDER_CONFIG = {
 function makeProviderConfig(organizationId?: string) {
   return {
     ...KILO_PROVIDER_CONFIG,
-    headers: withOrganizationHeader(
-      KILO_PROVIDER_CONFIG.headers,
-      organizationId,
-    ),
+    headers: withOrganizationHeader(KILO_PROVIDER_CONFIG.headers, organizationId),
   };
 }
 
@@ -673,10 +649,7 @@ export default async function (pi: ExtensionAPI) {
         // modelRegistry.refresh() that runs right after login returns.
         try {
           const organizationId = getEffectiveOrganizationId(cred);
-          cachedAllModels = await fetchKiloModels({
-            token: cred.access,
-            organizationId,
-          });
+          cachedAllModels = await fetchKiloModels({ token: cred.access, organizationId });
         } catch (error) {
           console.warn(
             "[kilo] Failed to fetch models after login:",
@@ -693,9 +666,7 @@ export default async function (pi: ExtensionAPI) {
       modifyModels: (models: Model<Api>[], cred: OAuthCredentials) => {
         if (cachedAllModels.length === 0) return models;
         const organizationId = getEffectiveOrganizationId(cred);
-        const orgHeaders = organizationId
-          ? { [KILO_ORG_HEADER]: organizationId }
-          : undefined;
+        const orgHeaders = organizationId ? { [KILO_ORG_HEADER]: organizationId } : undefined;
         // Use an existing kilo model as a template for provider metadata
         const template = models.find((m) => m.provider === "kilo");
         if (!template) return models;
@@ -763,10 +734,7 @@ export default async function (pi: ExtensionAPI) {
     // Fetch and display credits balance when an interactive UI is available.
     if (ctx.hasUI) {
       try {
-        const balance = await fetchKiloBalance(
-          cred.access,
-          getEffectiveOrganizationId(cred),
-        );
+        const balance = await fetchKiloBalance(cred.access, getEffectiveOrganizationId(cred));
         if (balance !== null) {
           const theme = ctx.ui.theme;
           ctx.ui.setStatus(
@@ -793,10 +761,7 @@ export default async function (pi: ExtensionAPI) {
     if (!ctx.hasUI) return;
 
     try {
-      const balance = await fetchKiloBalance(
-        cred.access,
-        getEffectiveOrganizationId(cred),
-      );
+      const balance = await fetchKiloBalance(cred.access, getEffectiveOrganizationId(cred));
       if (balance !== null) {
         const theme = ctx.ui.theme;
         ctx.ui.setStatus(
@@ -820,10 +785,7 @@ export default async function (pi: ExtensionAPI) {
     if (!ctx.hasUI) return;
 
     try {
-      const balance = await fetchKiloBalance(
-        cred.access,
-        getEffectiveOrganizationId(cred),
-      );
+      const balance = await fetchKiloBalance(cred.access, getEffectiveOrganizationId(cred));
       if (balance !== null) {
         const theme = ctx.ui.theme;
         ctx.ui.setStatus(
@@ -891,10 +853,7 @@ export default async function (pi: ExtensionAPI) {
           let totalCacheWrite = 0;
           let totalCost = 0;
           for (const entry of ctx.sessionManager.getEntries()) {
-            if (
-              entry.type === "message" &&
-              entry.message.role === "assistant"
-            ) {
+            if (entry.type === "message" && entry.message.role === "assistant") {
               totalInput += entry.message.usage.input;
               totalOutput += entry.message.usage.output;
               totalCacheRead += entry.message.usage.cacheRead;
@@ -905,13 +864,9 @@ export default async function (pi: ExtensionAPI) {
 
           // Match built-in context usage behavior
           const contextUsage = ctx.getContextUsage();
-          const contextWindow =
-            contextUsage?.contextWindow ?? model?.contextWindow ?? 0;
+          const contextWindow = contextUsage?.contextWindow ?? model?.contextWindow ?? 0;
           const contextPercentValue = contextUsage?.percent ?? 0;
-          const contextPercent =
-            contextUsage?.percent !== null
-              ? contextPercentValue.toFixed(1)
-              : "?";
+          const contextPercent = contextUsage?.percent !== null ? contextPercentValue.toFixed(1) : "?";
 
           // Build pwd line like built-in (path + branch + session name)
           let pwd = process.cwd();
@@ -934,18 +889,12 @@ export default async function (pi: ExtensionAPI) {
           const statsParts: string[] = [];
           if (totalInput) statsParts.push(`↑${formatTokens(totalInput)}`);
           if (totalOutput) statsParts.push(`↓${formatTokens(totalOutput)}`);
-          if (totalCacheRead)
-            statsParts.push(`R${formatTokens(totalCacheRead)}`);
-          if (totalCacheWrite)
-            statsParts.push(`W${formatTokens(totalCacheWrite)}`);
+          if (totalCacheRead) statsParts.push(`R${formatTokens(totalCacheRead)}`);
+          if (totalCacheWrite) statsParts.push(`W${formatTokens(totalCacheWrite)}`);
 
-          const usingSubscription = model
-            ? ctx.modelRegistry.isUsingOAuth(model)
-            : false;
+          const usingSubscription = model ? ctx.modelRegistry.isUsingOAuth(model) : false;
           if (totalCost || usingSubscription) {
-            statsParts.push(
-              `$${totalCost.toFixed(3)}${usingSubscription ? " (sub)" : ""}`,
-            );
+            statsParts.push(`$${totalCost.toFixed(3)}${usingSubscription ? " (sub)" : ""}`);
           }
 
           const autoIndicator = " (auto)";
@@ -965,9 +914,7 @@ export default async function (pi: ExtensionAPI) {
           statsParts.push(contextPercentStr);
 
           // Inject credits inline on the main stats line
-          const creditsStatus = footerData
-            .getExtensionStatuses()
-            .get("kilo-credits");
+          const creditsStatus = footerData.getExtensionStatuses().get("kilo-credits");
           if (creditsStatus) statsParts.push(creditsStatus);
 
           let statsLeft = statsParts.join(" ");
@@ -979,9 +926,7 @@ export default async function (pi: ExtensionAPI) {
           if (model?.reasoning) {
             const thinkingLevel = pi.getThinkingLevel() || "off";
             rightSideWithoutProvider =
-              thinkingLevel === "off"
-                ? `${modelName} • thinking off`
-                : `${modelName} • ${thinkingLevel}`;
+              thinkingLevel === "off" ? `${modelName} • thinking off` : `${modelName} • ${thinkingLevel}`;
           }
 
           let rightSide = rightSideWithoutProvider;
@@ -1010,9 +955,7 @@ export default async function (pi: ExtensionAPI) {
             if (availableForRight > 3) {
               const plainRight = rightSide.replace(/\x1b\[[0-9;]*m/g, "");
               const truncatedRight = plainRight.substring(0, availableForRight);
-              const padding = " ".repeat(
-                width - statsLeftWidth - truncatedRight.length,
-              );
+              const padding = " ".repeat(width - statsLeftWidth - truncatedRight.length);
               statsLine = statsLeft + padding + truncatedRight;
             } else {
               statsLine = statsLeft;
