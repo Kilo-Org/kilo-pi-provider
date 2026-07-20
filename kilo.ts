@@ -591,7 +591,7 @@ async function fetchKiloModels(options?: {
 
 const KILO_PROVIDER_CONFIG = {
   baseUrl: KILO_GATEWAY_BASE,
-  apiKey: "KILO_API_KEY",
+  apiKey: "$KILO_API_KEY",
   api: "openai-completions" as const,
   headers: {
     "X-KILOCODE-EDITORNAME": "Pi",
