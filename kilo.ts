@@ -702,7 +702,7 @@ export default async function (pi: ExtensionAPI) {
   // After session starts, pre-fetch all models if already logged in so
   // modifyModels has data to work with. Also fetch and display credits.
   pi.on("session_start", async (_event, ctx) => {
-    const cred = ctx.modelRegistry.authStorage.get("kilo");
+    const cred = readStoredKiloCredentials();
 
     // Clear credits if not logged in
     if (cred?.type !== "oauth") {
@@ -755,7 +755,7 @@ export default async function (pi: ExtensionAPI) {
   pi.on("model_select", async (event, ctx) => {
     if (event.model?.provider !== "kilo") return;
 
-    const cred = ctx.modelRegistry.authStorage.get("kilo");
+    const cred = readStoredKiloCredentials();
     if (cred?.type !== "oauth") return;
 
     if (!ctx.hasUI) return;
@@ -779,7 +779,7 @@ export default async function (pi: ExtensionAPI) {
 
   // Refresh credits after each turn
   pi.on("turn_end", async (_event, ctx) => {
-    const cred = ctx.modelRegistry.authStorage.get("kilo");
+    const cred = readStoredKiloCredentials();
     if (cred?.type !== "oauth") return;
 
     if (!ctx.hasUI) return;
@@ -808,7 +808,7 @@ export default async function (pi: ExtensionAPI) {
     if (tosShown) return;
     if (ctx.model?.provider !== "kilo") return;
 
-    const cred = ctx.modelRegistry.authStorage.get("kilo");
+    const cred = readStoredKiloCredentials();
     if (cred?.type === "oauth") {
       tosShown = true;
       return;
