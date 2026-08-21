@@ -612,6 +612,7 @@ function makeProviderConfig(organizationId?: string) {
 
 export default async function (pi: ExtensionAPI) {
   const storedCredentials = readStoredKiloCredentials();
+  const startupCatalogToken = storedCredentials?.access ?? process.env.KILO_API_KEY;
   const startupOrganizationId = getEffectiveOrganizationId(storedCredentials);
 
   // Fetch models at load time so the provider is immediately usable for
@@ -619,9 +620,9 @@ export default async function (pi: ExtensionAPI) {
   let freeModels: ProviderModelConfig[] = [];
   let cachedAllModels: ProviderModelConfig[] = [];
   try {
-    if (storedCredentials?.access) {
+    if (startupCatalogToken) {
       cachedAllModels = await fetchKiloModels({
-        token: storedCredentials.access,
+        token: startupCatalogToken,
         organizationId: startupOrganizationId,
       });
       freeModels = cachedAllModels.length > 0 ? cachedAllModels : [];
