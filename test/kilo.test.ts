@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
-import kiloExtension from "../kilo.ts";
+import kiloExtension, { usesCustomFooter } from "../kilo.ts";
 
 const temporaryDirectories: string[] = [];
 
@@ -36,6 +36,95 @@ const catalogResponse = () =>
     }),
     { status: 200, headers: { "Content-Type": "application/json" } },
   );
+
+test.each([
+  [undefined, true],
+  ["1", true],
+  ["true", true],
+  ["unexpected", true],
+  ["0", false],
+  ["false", false],
+  ["FALSE", false],
+  [" no ", false],
+])("usesCustomFooter returns %s for KILO_CUSTOM_FOOTER=%s", (value, expected) => {
+  if (value === undefined) {
+    vi.stubEnv("KILO_CUSTOM_FOOTER", "");
+  } else {
+    vi.stubEnv("KILO_CUSTOM_FOOTER", value);
+  }
+
+  expect(usesCustomFooter()).toBe(expected);
+});
+
+async function customFooterWasInstalled(customFooter: string): Promise<boolean> {
+  const agentDirectory = mkdtempSync(join(tmpdir(), "kilo-pi-provider-test-"));
+  temporaryDirectories.push(agentDirectory);
+  vi.stubEnv("PI_CODING_AGENT_DIR", agentDirectory);
+  vi.stubEnv("KILO_CUSTOM_FOOTER", customFooter);
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(catalogResponse()));
+
+  const on = vi.fn();
+  const setFooter = vi.fn();
+  await kiloExtension({ registerProvider: vi.fn(), on } as never);
+
+  const sessionStartHandlers = on.mock.calls
+    .filter(([event]) => event === "session_start")
+    .map(([, handler]) => handler as (event: unknown, context: unknown) => Promise<void>);
+  const context = { hasUI: true, ui: { setFooter, setStatus: vi.fn() } };
+  await Promise.all(sessionStartHandlers.map((handler) => handler({}, context)));
+
+  return setFooter.mock.calls.length > 0;
+}
+
+test("does not install the custom footer when disabled", async () => {
+  await expect(customFooterWasInstalled("0")).resolves.toBe(false);
+});
+
+test("installs the custom footer by default", async () => {
+  await expect(customFooterWasInstalled("")).resolves.toBe(true);
+});
+
+test("exposes Kilo credits when the custom footer is disabled", async () => {
+  const agentDirectory = mkdtempSync(join(tmpdir(), "kilo-pi-provider-test-"));
+  temporaryDirectories.push(agentDirectory);
+  writeFileSync(
+    join(agentDirectory, "auth.json"),
+    JSON.stringify({
+      kilo: { type: "oauth", access: "stored-access-token" },
+    }),
+  );
+  vi.stubEnv("PI_CODING_AGENT_DIR", agentDirectory);
+  vi.stubEnv("KILO_CUSTOM_FOOTER", "0");
+
+  const fetchMock = vi
+    .fn<typeof fetch>()
+    .mockResolvedValueOnce(catalogResponse())
+    .mockResolvedValueOnce(catalogResponse())
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify({ balance: 12.34 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+  vi.stubGlobal("fetch", fetchMock);
+
+  const on = vi.fn();
+  const setStatus = vi.fn();
+  await kiloExtension({ registerProvider: vi.fn(), on } as never);
+
+  const sessionStartHandlers = on.mock.calls
+    .filter(([event]) => event === "session_start")
+    .map(([, handler]) => handler as (event: unknown, context: unknown) => Promise<void>);
+  const context = {
+    hasUI: true,
+    ui: { setFooter: vi.fn(), setStatus, theme: { fg: vi.fn((_tone, text) => text) } },
+    modelRegistry: { registerProvider: vi.fn() },
+  };
+  await Promise.all(sessionStartHandlers.map((handler) => handler({}, context)));
+
+  expect(setStatus).toHaveBeenCalledWith("kilo-credits", "💰 $12.34");
+  expect(context.ui.setFooter).not.toHaveBeenCalled();
+});
 
 test("registers anonymous free models from the Kilo catalog", async () => {
   const agentDirectory = mkdtempSync(join(tmpdir(), "kilo-pi-provider-test-"));

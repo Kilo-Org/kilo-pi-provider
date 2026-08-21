@@ -40,6 +40,11 @@ function getEnvOrganizationId(): string | undefined {
   return process.env.KILO_ORG_ID || process.env.KILOCODE_ORGANIZATION_ID;
 }
 
+export function usesCustomFooter(): boolean {
+  const value = process.env.KILO_CUSTOM_FOOTER?.trim().toLowerCase();
+  return !["0", "false", "no"].includes(value ?? "");
+}
+
 function getAgentDir(): string {
   return process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
 }
@@ -826,9 +831,11 @@ export default async function (pi: ExtensionAPI) {
     };
   });
 
-  // Use custom footer to show credits inline with token stats
-  pi.on("session_start", async (_event, ctx) => {
-    ctx.ui.setFooter((tui, theme, footerData) => {
+  // Use custom footer to show credits inline with token stats.
+  // Disable it with KILO_CUSTOM_FOOTER=0 to allow another extension's footer.
+  if (usesCustomFooter()) {
+    pi.on("session_start", async (_event, ctx) => {
+      ctx.ui.setFooter((tui, theme, footerData) => {
       const unsubBranch = footerData.onBranchChange(() => tui.requestRender());
 
       const formatTokens = (count: number): string => {
@@ -970,6 +977,7 @@ export default async function (pi: ExtensionAPI) {
           return [theme.fg("dim", pwd), dimStatsLeft + dimRemainder];
         },
       };
+      });
     });
-  });
+  }
 }

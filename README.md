@@ -41,6 +41,16 @@ This opens your browser for device authorization. When your account belongs to o
 
 You can also set `KILO_API_KEY` directly instead of using the login flow. Set `KILO_ORG_ID` or `KILOCODE_ORGANIZATION_ID` to bill and filter models for an organization account.
 
+### Footer
+
+Kilo replaces Pi's footer by default to show usage and credits. To keep another extension's custom footer, disable Kilo's footer:
+
+```bash
+KILO_CUSTOM_FOOTER=0 pi
+```
+
+Kilo credits remain available as the `kilo-credits` footer status.
+
 ## Development
 
 Install dependencies and run the tests:
