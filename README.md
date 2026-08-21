@@ -41,6 +41,15 @@ This opens your browser for device authorization. When your account belongs to o
 
 You can also set `KILO_API_KEY` directly instead of using the login flow. Set `KILO_ORG_ID` or `KILOCODE_ORGANIZATION_ID` to bill and filter models for an organization account.
 
+## Development
+
+Install dependencies and run the tests:
+
+```bash
+npm ci
+npm test
+```
+
 ## License and attribution
 
 This repository is a Kilo-maintained derivative of [mrexodia/kilo-pi-provider](https://github.com/mrexodia/kilo-pi-provider). The original source and Kilo modifications are distributed under the [Boost Software License 1.0](./LICENSE).
