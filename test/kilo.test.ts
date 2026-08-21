@@ -108,3 +108,28 @@ test("loads the organization catalog with stored OAuth credentials", async () =>
     }),
   );
 });
+
+test("loads the organization catalog with KILO_API_KEY", async () => {
+  const agentDirectory = mkdtempSync(join(tmpdir(), "kilo-pi-provider-test-"));
+  temporaryDirectories.push(agentDirectory);
+  vi.stubEnv("PI_CODING_AGENT_DIR", agentDirectory);
+  vi.stubEnv("KILO_API_KEY", "environment-api-key");
+  vi.stubEnv("KILO_ORG_ID", "organization-id");
+  vi.stubEnv("KILOCODE_ORGANIZATION_ID", "");
+
+  const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(catalogResponse());
+  vi.stubGlobal("fetch", fetchMock);
+
+  await kiloExtension({ registerProvider: vi.fn(), on: vi.fn() } as never);
+
+  expect(fetchMock).toHaveBeenCalledOnce();
+  expect(fetchMock).toHaveBeenCalledWith(
+    "https://api.kilo.ai/api/organizations/organization-id/models",
+    expect.objectContaining({
+      headers: expect.objectContaining({
+        Authorization: "Bearer environment-api-key",
+        "X-KiloCode-OrganizationId": "organization-id",
+      }),
+    }),
+  );
+});
