@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
@@ -16,6 +16,27 @@ afterEach(() => {
   }
 });
 
+const catalogResponse = () =>
+  new Response(
+    JSON.stringify({
+      data: [
+        {
+          id: "acme/code-model:free",
+          name: "Acme Code Model",
+          context_length: 128_000,
+          max_completion_tokens: 16_000,
+          pricing: { prompt: "0", completion: "0" },
+          architecture: {
+            input_modalities: ["text"],
+            output_modalities: ["text"],
+          },
+          supported_parameters: ["reasoning"],
+        },
+      ],
+    }),
+    { status: 200, headers: { "Content-Type": "application/json" } },
+  );
+
 test("registers anonymous free models from the Kilo catalog", async () => {
   const agentDirectory = mkdtempSync(join(tmpdir(), "kilo-pi-provider-test-"));
   temporaryDirectories.push(agentDirectory);
@@ -24,27 +45,7 @@ test("registers anonymous free models from the Kilo catalog", async () => {
   vi.stubEnv("KILO_ORG_ID", "");
   vi.stubEnv("KILOCODE_ORGANIZATION_ID", "");
 
-  const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-    new Response(
-      JSON.stringify({
-        data: [
-          {
-            id: "acme/code-model:free",
-            name: "Acme Code Model",
-            context_length: 128_000,
-            max_completion_tokens: 16_000,
-            pricing: { prompt: "0", completion: "0" },
-            architecture: {
-              input_modalities: ["text"],
-              output_modalities: ["text"],
-            },
-            supported_parameters: ["reasoning"],
-          },
-        ],
-      }),
-      { status: 200, headers: { "Content-Type": "application/json" } },
-    ),
-  );
+  const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(catalogResponse());
   vi.stubGlobal("fetch", fetchMock);
 
   const registerProvider = vi.fn();
@@ -69,6 +70,41 @@ test("registers anonymous free models from the Kilo catalog", async () => {
           maxTokens: 16_000,
         }),
       ],
+    }),
+  );
+});
+
+test("loads the organization catalog with stored OAuth credentials", async () => {
+  const agentDirectory = mkdtempSync(join(tmpdir(), "kilo-pi-provider-test-"));
+  temporaryDirectories.push(agentDirectory);
+  writeFileSync(
+    join(agentDirectory, "auth.json"),
+    JSON.stringify({
+      kilo: {
+        type: "oauth",
+        access: "stored-access-token",
+        accountId: "organization-id",
+      },
+    }),
+  );
+  vi.stubEnv("PI_CODING_AGENT_DIR", agentDirectory);
+  vi.stubEnv("KILO_API_KEY", "");
+  vi.stubEnv("KILO_ORG_ID", "");
+  vi.stubEnv("KILOCODE_ORGANIZATION_ID", "");
+
+  const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(catalogResponse());
+  vi.stubGlobal("fetch", fetchMock);
+
+  await kiloExtension({ registerProvider: vi.fn(), on: vi.fn() } as never);
+
+  expect(fetchMock).toHaveBeenCalledOnce();
+  expect(fetchMock).toHaveBeenCalledWith(
+    "https://api.kilo.ai/api/organizations/organization-id/models",
+    expect.objectContaining({
+      headers: expect.objectContaining({
+        Authorization: "Bearer stored-access-token",
+        "X-KiloCode-OrganizationId": "organization-id",
+      }),
     }),
   );
 });
