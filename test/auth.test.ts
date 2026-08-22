@@ -7,6 +7,7 @@ import {
   getAgentDir,
   getCredentialOrganizationId,
   initiateDeviceAuth,
+  loginKilo,
   pollDeviceAuth,
   selectKiloOrganization,
   getEffectiveOrganizationId,
@@ -23,6 +24,119 @@ afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+describe("loginKilo", () => {
+  function setupLoginFetch(responses: Response[]): ReturnType<typeof vi.fn<typeof fetch>> {
+    const fetchMock = vi.fn<typeof fetch>();
+    for (const response of responses) fetchMock.mockResolvedValueOnce(response);
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  test("reports initiation, auth instructions, waiting, and success progress", async () => {
+    vi.useFakeTimers();
+    setupLoginFetch([
+      new Response(JSON.stringify({ code: "abc", verificationUrl: "https://verify", expiresIn: 60 }), { status: 200 }),
+      new Response(JSON.stringify({ status: "approved", token: "token" }), { status: 200 }),
+      new Response(JSON.stringify({ organizations: [] }), { status: 200 }),
+    ]);
+    const onProgress = vi.fn();
+    const onAuth = vi.fn();
+    const promise = loginKilo({ onProgress, onAuth });
+    await vi.advanceTimersByTimeAsync(3000);
+    await expect(promise).resolves.toEqual(expect.objectContaining({ access: "token" }));
+    expect(onProgress.mock.calls).toEqual([
+      ["Initiating device authorization..."],
+      ["Waiting for browser authorization..."],
+      ["Login successful!"],
+      ["Fetching Kilo profile..."],
+    ]);
+    expect(onAuth).toHaveBeenCalledWith({
+      url: "https://verify",
+      instructions: "Enter code: abc",
+    });
+  });
+
+  test("returns pending then approved credentials with selected organization", async () => {
+    const now = 1_000_000;
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    setupLoginFetch([
+      new Response(JSON.stringify({ code: "code", verificationUrl: "url", expiresIn: 60 }), { status: 200 }),
+      new Response(null, { status: 202 }),
+      new Response(JSON.stringify({ status: "approved", token: "token" }), { status: 200 }),
+      new Response(JSON.stringify({ organizations: [{ id: "org", name: "Org" }] }), { status: 200 }),
+    ]);
+    const onProgress = vi.fn();
+    const onSelect = vi.fn().mockResolvedValue("org");
+
+    const promise = loginKilo({ onProgress, onSelect, onAuth: vi.fn() });
+    await vi.advanceTimersByTimeAsync(3000);
+    await vi.advanceTimersByTimeAsync(3000);
+    const credentials = await promise;
+
+    expect(credentials).toEqual({
+      refresh: "token",
+      access: "token",
+      expires: now + 6000 + 365 * 24 * 60 * 60 * 1000,
+      accountId: "org",
+    });
+    expect(onProgress).toHaveBeenCalledWith("Waiting for browser authorization... (57s remaining)");
+  });
+
+  test("omits accountId for personal selection", async () => {
+    vi.useFakeTimers();
+    setupLoginFetch([
+      new Response(JSON.stringify({ code: "code", verificationUrl: "url", expiresIn: 60 }), { status: 200 }),
+      new Response(JSON.stringify({ status: "approved", token: "token" }), { status: 200 }),
+      new Response(JSON.stringify({ organizations: [{ id: "org", name: "Org" }] }), { status: 200 }),
+    ]);
+    const promise = loginKilo({ onSelect: vi.fn().mockResolvedValue("personal"), onAuth: vi.fn() });
+    await vi.advanceTimersByTimeAsync(3000);
+    await expect(promise).resolves.toEqual(expect.not.objectContaining({ accountId: expect.anything() }));
+  });
+
+  test.each([
+    ["approved missing token", { status: "approved" }, "Authorization approved but no token received"],
+    ["denied", { status: "denied" }, "Authorization denied by user."],
+    ["expired", { status: "expired" }, "Authorization code expired. Please try again."],
+  ])("throws exact error for %s", async (_name, result, message) => {
+    vi.useFakeTimers();
+    setupLoginFetch([
+      new Response(JSON.stringify({ code: "code", verificationUrl: "url", expiresIn: 60 }), { status: 200 }),
+      new Response(JSON.stringify(result), { status: 200 }),
+      ...(result.status === "approved" ? [new Response(JSON.stringify({ organizations: [] }), { status: 200 })] : []),
+    ]);
+    const promise = loginKilo({ onAuth: vi.fn() });
+    const rejection = expect(promise).rejects.toThrow(message);
+    await vi.advanceTimersByTimeAsync(3000);
+    await rejection;
+  });
+
+  test("throws Login cancelled when aborted", async () => {
+    vi.useFakeTimers();
+    setupLoginFetch([
+      new Response(JSON.stringify({ code: "code", verificationUrl: "url", expiresIn: 60 }), { status: 200 }),
+    ]);
+    const controller = new AbortController();
+    const promise = loginKilo({ signal: controller.signal, onAuth: vi.fn() });
+    const rejection = expect(promise).rejects.toThrow("Login cancelled");
+    controller.abort();
+    await rejection;
+  });
+
+  test("throws exact timeout after deadline exhaustion", async () => {
+    vi.useFakeTimers();
+    setupLoginFetch([
+      new Response(JSON.stringify({ code: "code", verificationUrl: "url", expiresIn: 3 }), { status: 200 }),
+      new Response(null, { status: 202 }),
+    ]);
+    const promise = loginKilo({ onAuth: vi.fn() });
+    const rejection = expect(promise).rejects.toThrow("Authentication timed out. Please try again.");
+    await vi.advanceTimersByTimeAsync(3000);
+    await rejection;
+  });
 });
 
 describe("device authorization", () => {

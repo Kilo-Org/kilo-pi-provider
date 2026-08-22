@@ -24,14 +24,10 @@ import {
   withOrganizationHeader,
 } from "./api.ts";
 import {
-  abortableSleep,
   getEffectiveOrganizationId,
   getEnvOrganizationId,
-  initiateDeviceAuth,
-  pollDeviceAuth,
-  POLL_INTERVAL_MS,
+  loginKilo,
   readStoredKiloCredentials,
-  selectKiloOrganization,
 } from "./auth.ts";
 
 // =============================================================================
@@ -41,7 +37,6 @@ import {
 const KILO_GATEWAY_BASE = `${KILO_API_BASE}/api/gateway`;
 const KILO_OPENROUTER_BASE = `${KILO_API_BASE}/api/openrouter`;
 const MODELS_FETCH_TIMEOUT_MS = 10_000;
-const TOKEN_EXPIRATION_MS = 365 * 24 * 60 * 60 * 1000; // 1 year
 const KILO_TOS_URL = "https://kilo.ai/terms";
 
 export function usesCustomFooter(): boolean {
@@ -64,61 +59,6 @@ function formatCredits(balance: number): string {
 // =============================================================================
 // Device Authorization Flow
 // =============================================================================
-
-async function loginKilo(
-  callbacks: OAuthLoginCallbacks,
-): Promise<OAuthCredentials> {
-  callbacks.onProgress?.("Initiating device authorization...");
-  const authData = await initiateDeviceAuth();
-  const { code, verificationUrl, expiresIn } = authData;
-
-  callbacks.onAuth({
-    url: verificationUrl,
-    instructions: `Enter code: ${code}`,
-  });
-
-  callbacks.onProgress?.("Waiting for browser authorization...");
-
-  const deadline = Date.now() + expiresIn * 1000;
-  while (Date.now() < deadline) {
-    if (callbacks.signal?.aborted) {
-      throw new Error("Login cancelled");
-    }
-
-    await abortableSleep(POLL_INTERVAL_MS, callbacks.signal);
-
-    const result = await pollDeviceAuth(code);
-
-    if (result.status === "approved") {
-      if (!result.token) {
-        throw new Error("Authorization approved but no token received");
-      }
-      callbacks.onProgress?.("Login successful!");
-      const organizationId = await selectKiloOrganization(result.token, callbacks);
-      return {
-        refresh: result.token,
-        access: result.token,
-        expires: Date.now() + TOKEN_EXPIRATION_MS,
-        ...(organizationId ? { accountId: organizationId } : {}),
-      };
-    }
-
-    if (result.status === "denied") {
-      throw new Error("Authorization denied by user.");
-    }
-
-    if (result.status === "expired") {
-      throw new Error("Authorization code expired. Please try again.");
-    }
-
-    const remaining = Math.ceil((deadline - Date.now()) / 1000);
-    callbacks.onProgress?.(
-      `Waiting for browser authorization... (${remaining}s remaining)`,
-    );
-  }
-
-  throw new Error("Authentication timed out. Please try again.");
-}
 
 async function refreshKiloToken(
   credentials: OAuthCredentials,
