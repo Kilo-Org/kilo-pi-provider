@@ -1,5 +1,5 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
@@ -15,12 +15,14 @@ import {
   getEnvOrganizationId,
   readStoredKiloCredentials,
 } from "../auth.ts";
+import { KILO_API_BASE } from "../api.ts";
 
 const temporaryDirectories: string[] = [];
 
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
@@ -181,7 +183,7 @@ describe("device authorization", () => {
 
     await initiateDeviceAuth();
 
-    expect(fetchMock).toHaveBeenCalledWith("https://api.kilo.ai/api/device-auth/codes", {
+    expect(fetchMock).toHaveBeenCalledWith(`${KILO_API_BASE}/api/device-auth/codes`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
     });
@@ -213,6 +215,13 @@ describe("device authorization", () => {
     );
   });
 
+  test("propagates an initiation fetch rejection unchanged", async () => {
+    const error = new Error("initiation network failure");
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockRejectedValue(error));
+
+    await expect(initiateDeviceAuth()).rejects.toBe(error);
+  });
+
   test("polls the exact code endpoint and parses OK responses", async () => {
     const response = { status: "approved", token: "token", userEmail: "user@example.com" };
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
@@ -221,7 +230,7 @@ describe("device authorization", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(pollDeviceAuth("code value")).resolves.toEqual(response);
-    expect(fetchMock).toHaveBeenCalledWith("https://api.kilo.ai/api/device-auth/codes/code value");
+    expect(fetchMock).toHaveBeenCalledWith(`${KILO_API_BASE}/api/device-auth/codes/code value`);
   });
 
   test.each([
@@ -240,6 +249,13 @@ describe("device authorization", () => {
     await expect(pollDeviceAuth("code")).rejects.toThrow(
       "Failed to poll device authorization: 500",
     );
+  });
+
+  test("propagates a poll fetch rejection unchanged", async () => {
+    const error = new Error("poll network failure");
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockRejectedValue(error));
+
+    await expect(pollDeviceAuth("code")).rejects.toBe(error);
   });
 
   test("resolves after the requested interval", async () => {
@@ -291,7 +307,7 @@ describe("getAgentDir", () => {
 
 describe("readStoredKiloCredentials", () => {
   function withAuthFile(contents: string): string {
-    const directory = mkdtempSync(join("/tmp", "kilo-auth-test-"));
+    const directory = mkdtempSync(join(tmpdir(), "kilo-auth-test-"));
     temporaryDirectories.push(directory);
     writeFileSync(join(directory, "auth.json"), contents);
     vi.stubEnv("PI_CODING_AGENT_DIR", directory);
@@ -313,7 +329,7 @@ describe("readStoredKiloCredentials", () => {
     ["absent kilo", JSON.stringify({ other: {} })],
   ])("returns undefined for %s", (_name, contents) => {
     if (contents === undefined) {
-      const directory = mkdtempSync(join("/tmp", "kilo-auth-test-"));
+      const directory = mkdtempSync(join(tmpdir(), "kilo-auth-test-"));
       temporaryDirectories.push(directory);
       vi.stubEnv("PI_CODING_AGENT_DIR", directory);
     } else {
@@ -334,7 +350,7 @@ describe("selectKiloOrganization", () => {
 
     await selectKiloOrganization("access-token", { onProgress });
 
-    expect(fetchMock).toHaveBeenCalledWith("https://api.kilo.ai/api/profile", {
+    expect(fetchMock).toHaveBeenCalledWith(`${KILO_API_BASE}/api/profile`, {
       headers: {
         Authorization: "Bearer access-token",
         "Content-Type": "application/json",
@@ -365,6 +381,36 @@ describe("selectKiloOrganization", () => {
       "fetch",
       vi.fn<typeof fetch>().mockResolvedValue(
         new Response(JSON.stringify({ organizations: [] }), { status: 200 }),
+      ),
+    );
+
+    await expect(selectKiloOrganization("token", {})).resolves.toBe("env-org");
+  });
+
+  test("falls through to picker when environment organization is absent from profile", async () => {
+    vi.stubEnv("KILO_ORG_ID", "env-org");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(JSON.stringify({ organizations: [{ id: "other-org", name: "Other" }] }), {
+          status: 200,
+        }),
+      ),
+    );
+    const onSelect = vi.fn().mockResolvedValue("other-org");
+
+    await expect(selectKiloOrganization("token", { onSelect })).resolves.toBe("other-org");
+    expect(onSelect).toHaveBeenCalled();
+  });
+
+  test("returns environment fallback when organization is absent and no picker exists", async () => {
+    vi.stubEnv("KILO_ORG_ID", "env-org");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(JSON.stringify({ organizations: [{ id: "other-org", name: "Other" }] }), {
+          status: 200,
+        }),
       ),
     );
 

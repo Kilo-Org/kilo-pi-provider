@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
+  KILO_API_BASE,
   KILO_ORG_HEADER,
   fetchKiloBalance,
   fetchKiloProfile,
@@ -56,7 +57,7 @@ describe("fetchKiloProfile", () => {
 
     await fetchKiloProfile("access-token");
 
-    expect(fetchMock).toHaveBeenCalledWith("https://api.kilo.ai/api/profile", {
+    expect(fetchMock).toHaveBeenCalledWith(`${KILO_API_BASE}/api/profile`, {
       headers: {
         Authorization: "Bearer access-token",
         "Content-Type": "application/json",
@@ -107,7 +108,7 @@ describe("fetchKiloBalance", () => {
 
     await fetchKiloBalance("access-token");
 
-    expect(fetchMock).toHaveBeenCalledWith("https://api.kilo.ai/api/profile/balance", {
+    expect(fetchMock).toHaveBeenCalledWith(`${KILO_API_BASE}/api/profile/balance`, {
       headers: {
         Authorization: "Bearer access-token",
         "Content-Type": "application/json",
@@ -123,7 +124,7 @@ describe("fetchKiloBalance", () => {
 
     await fetchKiloBalance("access-token", "organization-id");
 
-    expect(fetchMock).toHaveBeenCalledWith("https://api.kilo.ai/api/profile/balance", {
+    expect(fetchMock).toHaveBeenCalledWith(`${KILO_API_BASE}/api/profile/balance`, {
       headers: {
         Authorization: "Bearer access-token",
         "Content-Type": "application/json",
@@ -146,6 +147,17 @@ describe("fetchKiloBalance", () => {
         "Content-Type": "application/json",
       },
     });
+  });
+
+  test("preserves a zero balance on success", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(JSON.stringify({ balance: 0 }), { status: 200 }),
+      ),
+    );
+
+    await expect(fetchKiloBalance("access-token")).resolves.toBe(0);
   });
 
   test("returns the balance on success", async () => {
