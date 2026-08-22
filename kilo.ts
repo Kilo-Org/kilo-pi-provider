@@ -24,8 +24,12 @@ import {
   withOrganizationHeader,
 } from "./api.ts";
 import {
+  abortableSleep,
   getEffectiveOrganizationId,
   getEnvOrganizationId,
+  initiateDeviceAuth,
+  pollDeviceAuth,
+  POLL_INTERVAL_MS,
   readStoredKiloCredentials,
   selectKiloOrganization,
 } from "./auth.ts";
@@ -36,8 +40,6 @@ import {
 
 const KILO_GATEWAY_BASE = `${KILO_API_BASE}/api/gateway`;
 const KILO_OPENROUTER_BASE = `${KILO_API_BASE}/api/openrouter`;
-const KILO_DEVICE_AUTH_ENDPOINT = `${KILO_API_BASE}/api/device-auth/codes`;
-const POLL_INTERVAL_MS = 3000;
 const MODELS_FETCH_TIMEOUT_MS = 10_000;
 const TOKEN_EXPIRATION_MS = 365 * 24 * 60 * 60 * 1000; // 1 year
 const KILO_TOS_URL = "https://kilo.ai/terms";
@@ -62,70 +64,6 @@ function formatCredits(balance: number): string {
 // =============================================================================
 // Device Authorization Flow
 // =============================================================================
-
-interface DeviceAuthResponse {
-  code: string;
-  verificationUrl: string;
-  expiresIn: number;
-}
-
-interface DeviceAuthPollResponse {
-  status: "pending" | "approved" | "denied" | "expired";
-  token?: string;
-  userEmail?: string;
-}
-
-function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(new Error("Login cancelled"));
-      return;
-    }
-    const timeout = setTimeout(resolve, ms);
-    signal?.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timeout);
-        reject(new Error("Login cancelled"));
-      },
-      { once: true },
-    );
-  });
-}
-
-async function initiateDeviceAuth(): Promise<DeviceAuthResponse> {
-  const response = await fetch(KILO_DEVICE_AUTH_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-  });
-
-  if (!response.ok) {
-    if (response.status === 429) {
-      throw new Error(
-        "Too many pending authorization requests. Please try again later.",
-      );
-    }
-    throw new Error(
-      `Failed to initiate device authorization: ${response.status}`,
-    );
-  }
-
-  return (await response.json()) as DeviceAuthResponse;
-}
-
-async function pollDeviceAuth(code: string): Promise<DeviceAuthPollResponse> {
-  const response = await fetch(`${KILO_DEVICE_AUTH_ENDPOINT}/${code}`);
-
-  if (response.status === 202) return { status: "pending" };
-  if (response.status === 403) return { status: "denied" };
-  if (response.status === 410) return { status: "expired" };
-
-  if (!response.ok) {
-    throw new Error(`Failed to poll device authorization: ${response.status}`);
-  }
-
-  return (await response.json()) as DeviceAuthPollResponse;
-}
 
 async function loginKilo(
   callbacks: OAuthLoginCallbacks,

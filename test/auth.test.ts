@@ -3,8 +3,11 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
+  abortableSleep,
   getAgentDir,
   getCredentialOrganizationId,
+  initiateDeviceAuth,
+  pollDeviceAuth,
   selectKiloOrganization,
   getEffectiveOrganizationId,
   getEnvOrganizationId,
@@ -14,11 +17,117 @@ import {
 const temporaryDirectories: string[] = [];
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+describe("device authorization", () => {
+  test("initiates device authorization with the exact POST request", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ code: "code", verificationUrl: "url", expiresIn: 60 }), {
+        status: 200,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await initiateDeviceAuth();
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.kilo.ai/api/device-auth/codes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+  });
+
+  test("returns parsed device authorization success", async () => {
+    const response = { code: "code", verificationUrl: "url", expiresIn: 60 };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(response), { status: 200 })),
+    );
+
+    await expect(initiateDeviceAuth()).resolves.toEqual(response);
+  });
+
+  test("throws the exact rate-limit message", async () => {
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 429 })));
+
+    await expect(initiateDeviceAuth()).rejects.toThrow(
+      "Too many pending authorization requests. Please try again later.",
+    );
+  });
+
+  test("throws the exact generic initiation status message", async () => {
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 500 })));
+
+    await expect(initiateDeviceAuth()).rejects.toThrow(
+      "Failed to initiate device authorization: 500",
+    );
+  });
+
+  test("polls the exact code endpoint and parses OK responses", async () => {
+    const response = { status: "approved", token: "token", userEmail: "user@example.com" };
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify(response), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(pollDeviceAuth("code value")).resolves.toEqual(response);
+    expect(fetchMock).toHaveBeenCalledWith("https://api.kilo.ai/api/device-auth/codes/code value");
+  });
+
+  test.each([
+    [202, { status: "pending" }],
+    [403, { status: "denied" }],
+    [410, { status: "expired" }],
+  ])("maps status %s exactly", async (status, expected) => {
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status })));
+
+    await expect(pollDeviceAuth("code")).resolves.toEqual(expected);
+  });
+
+  test("throws the exact generic poll failure", async () => {
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 500 })));
+
+    await expect(pollDeviceAuth("code")).rejects.toThrow(
+      "Failed to poll device authorization: 500",
+    );
+  });
+
+  test("resolves after the requested interval", async () => {
+    vi.useFakeTimers();
+    const promise = abortableSleep(3000);
+    await vi.advanceTimersByTimeAsync(2999);
+    let settled = false;
+    void promise.then(() => { settled = true; });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(promise).resolves.toBeUndefined();
+  });
+
+  test("rejects immediately when already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(abortableSleep(3000, controller.signal)).rejects.toThrow("Login cancelled");
+  });
+
+  test("rejects on mid-wait abort and clears the pending timeout", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout");
+    const promise = abortableSleep(3000, controller.signal);
+
+    controller.abort();
+
+    await expect(promise).rejects.toThrow("Login cancelled");
+    expect(clearTimeoutSpy).toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(3000);
+  });
 });
 
 describe("getAgentDir", () => {
