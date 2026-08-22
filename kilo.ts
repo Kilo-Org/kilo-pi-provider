@@ -28,6 +28,7 @@ import {
   getEnvOrganizationId,
   loginKilo,
   readStoredKiloCredentials,
+  refreshKiloToken,
 } from "./auth.ts";
 
 // =============================================================================
@@ -59,17 +60,6 @@ function formatCredits(balance: number): string {
 // =============================================================================
 // Device Authorization Flow
 // =============================================================================
-
-async function refreshKiloToken(
-  credentials: OAuthCredentials,
-): Promise<OAuthCredentials> {
-  if (credentials.expires > Date.now()) {
-    return credentials;
-  }
-  throw new Error(
-    "Kilo token expired. Please run /login kilo to re-authenticate.",
-  );
-}
 
 // =============================================================================
 // Dynamic Model Loading

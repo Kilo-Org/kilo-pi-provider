@@ -104,6 +104,17 @@ export async function pollDeviceAuth(code: string): Promise<DeviceAuthPollRespon
   return (await response.json()) as DeviceAuthPollResponse;
 }
 
+export async function refreshKiloToken(
+  credentials: OAuthCredentials,
+): Promise<OAuthCredentials> {
+  if (credentials.expires > Date.now()) {
+    return credentials;
+  }
+  throw new Error(
+    "Kilo token expired. Please run /login kilo to re-authenticate.",
+  );
+}
+
 export async function loginKilo(
   callbacks: OAuthLoginCallbacks,
 ): Promise<OAuthCredentials> {

@@ -9,6 +9,7 @@ import {
   initiateDeviceAuth,
   loginKilo,
   pollDeviceAuth,
+  refreshKiloToken,
   selectKiloOrganization,
   getEffectiveOrganizationId,
   getEnvOrganizationId,
@@ -24,6 +25,36 @@ afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+describe("refreshKiloToken", () => {
+  test("returns the exact same credentials object when not expired", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const credentials = { type: "oauth", access: "token", expires: 1001 } as never;
+
+    await expect(refreshKiloToken(credentials)).resolves.toBe(credentials);
+  });
+
+  test("throws the exact error when expired", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const credentials = { type: "oauth", access: "token", expires: 999 } as never;
+
+    await expect(refreshKiloToken(credentials)).rejects.toThrow(
+      "Kilo token expired. Please run /login kilo to re-authenticate.",
+    );
+  });
+
+  test("treats expiration equal to Date.now as expired", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const credentials = { type: "oauth", access: "token", expires: 1000 } as never;
+
+    await expect(refreshKiloToken(credentials)).rejects.toThrow(
+      "Kilo token expired. Please run /login kilo to re-authenticate.",
+    );
+  });
 });
 
 describe("loginKilo", () => {
