@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   getAgentDir,
   getCredentialOrganizationId,
+  selectKiloOrganization,
   getEffectiveOrganizationId,
   getEnvOrganizationId,
   readStoredKiloCredentials,
@@ -66,6 +67,124 @@ describe("readStoredKiloCredentials", () => {
     }
 
     expect(readStoredKiloCredentials()).toBeUndefined();
+  });
+});
+
+describe("selectKiloOrganization", () => {
+  test("fetches the profile with the token and reports progress", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ organizations: [] }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const onProgress = vi.fn();
+
+    await selectKiloOrganization("access-token", { onProgress });
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.kilo.ai/api/profile", {
+      headers: {
+        Authorization: "Bearer access-token",
+        "Content-Type": "application/json",
+      },
+    });
+    expect(onProgress).toHaveBeenCalledWith("Fetching Kilo profile...");
+  });
+
+  test("returns a matching environment organization without prompting", async () => {
+    vi.stubEnv("KILO_ORG_ID", "org-2");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(JSON.stringify({ organizations: [{ id: "org-2", name: "Org 2" }] }), {
+          status: 200,
+        }),
+      ),
+    );
+    const onSelect = vi.fn();
+
+    await expect(selectKiloOrganization("token", { onSelect })).resolves.toBe("org-2");
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  test("returns the environment fallback without onSelect or organizations", async () => {
+    vi.stubEnv("KILO_ORG_ID", "env-org");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(JSON.stringify({ organizations: [] }), { status: 200 }),
+      ),
+    );
+
+    await expect(selectKiloOrganization("token", {})).resolves.toBe("env-org");
+  });
+
+  test("offers personal first and formats organization roles exactly", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            organizations: [
+              { id: "org-1", name: "First", role: "admin" },
+              { id: "org-2", name: "Second" },
+            ],
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+    const onSelect = vi.fn().mockResolvedValue("org-2");
+
+    await selectKiloOrganization("token", { onSelect });
+
+    expect(onSelect).toHaveBeenCalledWith({
+      message: "Select Kilo account",
+      options: [
+        { id: "personal", label: "Personal Account" },
+        { id: "org-1", label: "First (admin)" },
+        { id: "org-2", label: "Second" },
+      ],
+    });
+  });
+
+  test.each([undefined, "personal"])("returns undefined for cancel or personal: %j", async (selected) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(JSON.stringify({ organizations: [{ id: "org-1", name: "Org 1" }] }), {
+          status: 200,
+        }),
+      ),
+    );
+    const onSelect = vi.fn().mockResolvedValue(selected);
+
+    await expect(selectKiloOrganization("token", { onSelect })).resolves.toBeUndefined();
+  });
+
+  test("returns the selected organization ID", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(JSON.stringify({ organizations: [{ id: "org-1", name: "Org 1" }] }), {
+          status: 200,
+        }),
+      ),
+    );
+
+    await expect(
+      selectKiloOrganization("token", { onSelect: vi.fn().mockResolvedValue("org-1") }),
+    ).resolves.toBe("org-1");
+  });
+
+  test("logs the exact warning and returns environment fallback on profile failure", async () => {
+    vi.stubEnv("KILO_ORG_ID", "env-org");
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockRejectedValue(new Error("network failure")));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    await expect(selectKiloOrganization("token", {})).resolves.toBe("env-org");
+    expect(warn).toHaveBeenCalledWith(
+      "[kilo] Failed to fetch profile for organization selection:",
+      "network failure",
+    );
   });
 });
 

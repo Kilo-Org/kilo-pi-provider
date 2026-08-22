@@ -19,16 +19,15 @@ import type { ExtensionAPI, ProviderModelConfig } from "@earendil-works/pi-codin
 import { visibleWidth } from "@earendil-works/pi-tui";
 import {
   fetchKiloBalance,
-  fetchKiloProfile,
   KILO_API_BASE,
   KILO_ORG_HEADER,
-  type KiloProfile,
   withOrganizationHeader,
 } from "./api.ts";
 import {
   getEffectiveOrganizationId,
   getEnvOrganizationId,
   readStoredKiloCredentials,
+  selectKiloOrganization,
 } from "./auth.ts";
 
 // =============================================================================
@@ -51,46 +50,6 @@ export function usesCustomFooter(): boolean {
 // =============================================================================
 // Profile and Balance Fetching
 // =============================================================================
-
-async function selectKiloOrganization(
-  token: string,
-  callbacks: OAuthLoginCallbacks,
-): Promise<string | undefined> {
-  let profile: KiloProfile;
-  try {
-    callbacks.onProgress?.("Fetching Kilo profile...");
-    profile = await fetchKiloProfile(token);
-  } catch (error) {
-    console.warn(
-      "[kilo] Failed to fetch profile for organization selection:",
-      error instanceof Error ? error.message : error,
-    );
-    return getEnvOrganizationId();
-  }
-
-  const organizations = profile.organizations ?? [];
-  const envOrganizationId = getEnvOrganizationId();
-  if (envOrganizationId && organizations.some((org) => org.id === envOrganizationId)) {
-    return envOrganizationId;
-  }
-  if (!callbacks.onSelect || organizations.length === 0) {
-    return envOrganizationId;
-  }
-
-  const selected = await callbacks.onSelect({
-    message: "Select Kilo account",
-    options: [
-      { id: "personal", label: "Personal Account" },
-      ...organizations.map((org) => ({
-        id: org.id,
-        label: `${org.name}${org.role ? ` (${org.role})` : ""}`,
-      })),
-    ],
-  });
-
-  if (!selected || selected === "personal") return undefined;
-  return selected;
-}
 
 function formatCredits(balance: number): string {
   if (balance >= 1000) {
