@@ -21,9 +21,11 @@ import type {
 import type { ExtensionAPI, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import {
+  fetchKiloProfile,
   KILO_API_BASE,
   KILO_ORG_HEADER,
   KILO_PROFILE_ENDPOINT,
+  type KiloProfile,
   withOrganizationHeader,
 } from "./api.ts";
 
@@ -80,36 +82,8 @@ function getEffectiveOrganizationId(credentials?: OAuthCredentials): string | un
 // Profile and Balance Fetching
 // =============================================================================
 
-interface KiloOrganization {
-  id: string;
-  name: string;
-  role?: string;
-}
-
-interface KiloProfile {
-  user?: { email?: string; name?: string };
-  email?: string;
-  name?: string;
-  organizations?: KiloOrganization[];
-}
-
 interface KiloBalance {
   balance?: number;
-}
-
-async function fetchKiloProfile(token: string): Promise<KiloProfile> {
-  const response = await fetch(KILO_PROFILE_ENDPOINT, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch Kilo profile: ${response.status}`);
-  }
-
-  return (await response.json()) as KiloProfile;
 }
 
 async function selectKiloOrganization(
