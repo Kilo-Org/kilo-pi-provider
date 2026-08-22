@@ -20,12 +20,17 @@ import type {
 } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
+import {
+  KILO_API_BASE,
+  KILO_ORG_HEADER,
+  KILO_PROFILE_ENDPOINT,
+  withOrganizationHeader,
+} from "./api.ts";
 
 // =============================================================================
 // Constants
 // =============================================================================
 
-const KILO_API_BASE = process.env.KILO_API_URL || "https://api.kilo.ai";
 const KILO_GATEWAY_BASE = `${KILO_API_BASE}/api/gateway`;
 const KILO_OPENROUTER_BASE = `${KILO_API_BASE}/api/openrouter`;
 const KILO_DEVICE_AUTH_ENDPOINT = `${KILO_API_BASE}/api/device-auth/codes`;
@@ -33,8 +38,6 @@ const POLL_INTERVAL_MS = 3000;
 const MODELS_FETCH_TIMEOUT_MS = 10_000;
 const TOKEN_EXPIRATION_MS = 365 * 24 * 60 * 60 * 1000; // 1 year
 const KILO_TOS_URL = "https://kilo.ai/terms";
-const KILO_PROFILE_ENDPOINT = `${KILO_API_BASE}/api/profile`;
-const KILO_ORG_HEADER = "X-KiloCode-OrganizationId";
 
 function getEnvOrganizationId(): string | undefined {
   return process.env.KILO_ORG_ID || process.env.KILOCODE_ORGANIZATION_ID;
@@ -71,14 +74,6 @@ function getCredentialOrganizationId(credentials?: OAuthCredentials): string | u
 
 function getEffectiveOrganizationId(credentials?: OAuthCredentials): string | undefined {
   return getCredentialOrganizationId(credentials) ?? getEnvOrganizationId();
-}
-
-function withOrganizationHeader(
-  headers: Record<string, string>,
-  organizationId?: string,
-): Record<string, string> {
-  if (!organizationId) return headers;
-  return { ...headers, [KILO_ORG_HEADER]: organizationId };
 }
 
 // =============================================================================
