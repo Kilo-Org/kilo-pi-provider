@@ -37,3 +37,33 @@ export async function fetchKiloProfile(token: string): Promise<KiloProfile> {
 
   return (await response.json()) as KiloProfile;
 }
+
+export interface KiloBalance {
+  balance?: number;
+}
+
+export async function fetchKiloBalance(
+  token: string,
+  organizationId?: string,
+): Promise<number | null> {
+  try {
+    const response = await fetch(`${KILO_PROFILE_ENDPOINT}/balance`, {
+      headers: withOrganizationHeader(
+        {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        organizationId,
+      ),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = (await response.json()) as KiloBalance;
+    return data.balance ?? null;
+  } catch {
+    return null;
+  }
+}

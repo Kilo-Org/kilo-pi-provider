@@ -21,10 +21,10 @@ import type {
 import type { ExtensionAPI, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import {
+  fetchKiloBalance,
   fetchKiloProfile,
   KILO_API_BASE,
   KILO_ORG_HEADER,
-  KILO_PROFILE_ENDPOINT,
   type KiloProfile,
   withOrganizationHeader,
 } from "./api.ts";
@@ -82,10 +82,6 @@ function getEffectiveOrganizationId(credentials?: OAuthCredentials): string | un
 // Profile and Balance Fetching
 // =============================================================================
 
-interface KiloBalance {
-  balance?: number;
-}
-
 async function selectKiloOrganization(
   token: string,
   callbacks: OAuthLoginCallbacks,
@@ -124,32 +120,6 @@ async function selectKiloOrganization(
 
   if (!selected || selected === "personal") return undefined;
   return selected;
-}
-
-async function fetchKiloBalance(
-  token: string,
-  organizationId?: string,
-): Promise<number | null> {
-  try {
-    const response = await fetch(`${KILO_PROFILE_ENDPOINT}/balance`, {
-      headers: withOrganizationHeader(
-        {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        organizationId,
-      ),
-    });
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const data = (await response.json()) as KiloBalance;
-    return data.balance ?? null;
-  } catch {
-    return null;
-  }
 }
 
 function formatCredits(balance: number): string {
