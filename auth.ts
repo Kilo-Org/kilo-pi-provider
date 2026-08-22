@@ -5,7 +5,7 @@ import type { OAuthCredentials, OAuthLoginCallbacks } from "@earendil-works/pi-a
 import { KILO_API_BASE, fetchKiloProfile, type KiloProfile } from "./api.ts";
 
 const KILO_DEVICE_AUTH_ENDPOINT = `${KILO_API_BASE}/api/device-auth/codes`;
-export const POLL_INTERVAL_MS = 3000;
+const POLL_INTERVAL_MS = 3000;
 const TOKEN_EXPIRATION_MS = 365 * 24 * 60 * 60 * 1000; // 1 year
 
 export function getEnvOrganizationId(): string | undefined {

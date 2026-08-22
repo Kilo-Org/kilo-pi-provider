@@ -1,5 +1,5 @@
 export const KILO_API_BASE = process.env.KILO_API_URL || "https://api.kilo.ai";
-export const KILO_PROFILE_ENDPOINT = `${KILO_API_BASE}/api/profile`;
+const KILO_PROFILE_ENDPOINT = `${KILO_API_BASE}/api/profile`;
 export const KILO_ORG_HEADER = "X-KiloCode-OrganizationId";
 
 export function withOrganizationHeader(
@@ -38,7 +38,7 @@ export async function fetchKiloProfile(token: string): Promise<KiloProfile> {
   return (await response.json()) as KiloProfile;
 }
 
-export interface KiloBalance {
+interface KiloBalance {
   balance?: number;
 }
 

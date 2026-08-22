@@ -45,10 +45,6 @@ export function usesCustomFooter(): boolean {
   return !["0", "false", "no"].includes(value ?? "");
 }
 
-// =============================================================================
-// Profile and Balance Fetching
-// =============================================================================
-
 function formatCredits(balance: number): string {
   if (balance >= 1000) {
     return `$${(balance / 1000).toFixed(1)}k`;
@@ -56,10 +52,6 @@ function formatCredits(balance: number): string {
     return `$${balance.toFixed(2)}`;
   }
 }
-
-// =============================================================================
-// Device Authorization Flow
-// =============================================================================
 
 // =============================================================================
 // Dynamic Model Loading
