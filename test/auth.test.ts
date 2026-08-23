@@ -9,6 +9,7 @@ import {
 	getCredentialOrganizationId,
 	getEffectiveOrganizationId,
 	getEnvOrganizationId,
+	getKiloAccess,
 	initiateDeviceAuth,
 	loginKilo,
 	pollDeviceAuth,
@@ -307,15 +308,15 @@ describe("getAgentDir", () => {
 	});
 });
 
-describe("readStoredKiloCredentials", () => {
-	function withAuthFile(contents: string): string {
-		const directory = mkdtempSync(join(tmpdir(), "kilo-auth-test-"));
-		temporaryDirectories.push(directory);
-		writeFileSync(join(directory, "auth.json"), contents);
-		vi.stubEnv("PI_CODING_AGENT_DIR", directory);
-		return directory;
-	}
+function withAuthFile(contents: string): string {
+	const directory = mkdtempSync(join(tmpdir(), "kilo-auth-test-"));
+	temporaryDirectories.push(directory);
+	writeFileSync(join(directory, "auth.json"), contents);
+	vi.stubEnv("PI_CODING_AGENT_DIR", directory);
+	return directory;
+}
 
+describe("readStoredKiloCredentials", () => {
 	test("returns valid OAuth credentials", () => {
 		withAuthFile(JSON.stringify({ kilo: { type: "oauth", access: "token" } }));
 
@@ -339,6 +340,41 @@ describe("readStoredKiloCredentials", () => {
 		}
 
 		expect(readStoredKiloCredentials()).toBeUndefined();
+	});
+});
+
+describe("getKiloAccess", () => {
+	test("prefers stored OAuth access and account organization over environment values", () => {
+		withAuthFile(JSON.stringify({ kilo: { type: "oauth", access: "oauth-token", accountId: "account-org" } }));
+		vi.stubEnv("KILO_API_KEY", "api-key");
+		vi.stubEnv("KILO_ORG_ID", "env-org");
+
+		expect(getKiloAccess()).toEqual({ token: "oauth-token", organizationId: "account-org" });
+	});
+
+	test("uses KILO_ORG_ID before KILOCODE_ORGANIZATION_ID for API-key access", () => {
+		withAuthFile(JSON.stringify({}));
+		vi.stubEnv("KILO_API_KEY", "api-key");
+		vi.stubEnv("KILO_ORG_ID", "kilo-org");
+		vi.stubEnv("KILOCODE_ORGANIZATION_ID", "legacy-org");
+
+		expect(getKiloAccess()).toEqual({ token: "api-key", organizationId: "kilo-org" });
+	});
+
+	test("uses KILOCODE_ORGANIZATION_ID for API-key-only access when needed", () => {
+		withAuthFile(JSON.stringify({}));
+		vi.stubEnv("KILO_API_KEY", "api-key");
+		vi.stubEnv("KILO_ORG_ID", "");
+		vi.stubEnv("KILOCODE_ORGANIZATION_ID", "legacy-org");
+
+		expect(getKiloAccess()).toEqual({ token: "api-key", organizationId: "legacy-org" });
+	});
+
+	test("returns undefined without OAuth credentials or an API key", () => {
+		withAuthFile(JSON.stringify({}));
+		vi.stubEnv("KILO_API_KEY", "");
+
+		expect(getKiloAccess()).toBeUndefined();
 	});
 });
 
