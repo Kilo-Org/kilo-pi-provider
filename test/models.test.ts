@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { mapOpenRouterModel, type OpenRouterModel } from "../models.ts";
+import { mapOpenRouterModel, type OpenRouterModel } from "../src/models.ts";
 
 const modelWithGatewayVariants: OpenRouterModel = {
 	id: "acme/reasoning-model",

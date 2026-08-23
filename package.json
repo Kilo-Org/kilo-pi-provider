@@ -10,7 +10,7 @@
     "prepare": "prek install"
   },
   "pi": {
-    "extensions": ["./kilo.ts"]
+    "extensions": ["./src/index.ts"]
   },
   "repository": {
     "type": "git",
