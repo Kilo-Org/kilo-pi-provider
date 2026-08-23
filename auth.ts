@@ -40,6 +40,22 @@ export function getEffectiveOrganizationId(credentials?: OAuthCredentials): stri
 	return getCredentialOrganizationId(credentials) ?? getEnvOrganizationId();
 }
 
+export interface KiloAccess {
+	token: string;
+	organizationId?: string;
+}
+
+export function getKiloAccess(): KiloAccess | undefined {
+	const credentials = readStoredKiloCredentials();
+	const token = credentials?.access ?? process.env.KILO_API_KEY;
+	if (!token) return undefined;
+
+	return {
+		token,
+		organizationId: getEffectiveOrganizationId(credentials),
+	};
+}
+
 interface DeviceAuthResponse {
 	code: string;
 	verificationUrl: string;

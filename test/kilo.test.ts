@@ -16,6 +16,25 @@ afterEach(() => {
 	}
 });
 
+function isolateAuth(auth: object = {}): void {
+	const agentDirectory = mkdtempSync(join(tmpdir(), "kilo-pi-provider-test-"));
+	temporaryDirectories.push(agentDirectory);
+	writeFileSync(join(agentDirectory, "auth.json"), JSON.stringify(auth));
+	vi.stubEnv("PI_CODING_AGENT_DIR", agentDirectory);
+	vi.stubEnv("KILO_API_KEY", "");
+	vi.stubEnv("KILO_ORG_ID", "");
+	vi.stubEnv("KILOCODE_ORGANIZATION_ID", "");
+	vi.stubEnv("KILO_CUSTOM_FOOTER", "0");
+}
+
+async function runSessionStart(on: ReturnType<typeof vi.fn>, context: object): Promise<void> {
+	const handler = on.mock.calls.find(([event]) => event === "session_start")?.[1] as
+		| ((event: unknown, context: unknown) => Promise<void>)
+		| undefined;
+	if (!handler) throw new Error("session_start handler not registered");
+	await handler({}, context);
+}
+
 const catalogResponse = () =>
 	new Response(
 		JSON.stringify({
@@ -225,4 +244,290 @@ test("loads the organization catalog with KILO_API_KEY", async () => {
 			}),
 		}),
 	);
+});
+
+test("session_start refreshes the catalog and credits for API-key-only access", async () => {
+	isolateAuth();
+	vi.stubEnv("KILO_API_KEY", "api-key");
+	const fetchMock = vi
+		.fn<typeof fetch>()
+		.mockResolvedValueOnce(catalogResponse())
+		.mockResolvedValueOnce(catalogResponse())
+		.mockResolvedValueOnce(new Response(JSON.stringify({ balance: 12.34 }), { status: 200 }));
+	vi.stubGlobal("fetch", fetchMock);
+	const on = vi.fn();
+	const setStatus = vi.fn();
+
+	await kiloExtension({ registerProvider: vi.fn(), on } as never);
+	await runSessionStart(on, {
+		hasUI: true,
+		ui: { setStatus, theme: { fg: vi.fn((_tone, text) => text) } },
+		modelRegistry: { registerProvider: vi.fn() },
+	});
+
+	expect(fetchMock.mock.calls[1]?.[0]).toBe("https://api.kilo.ai/api/gateway/models");
+	expect(fetchMock.mock.calls[1]?.[1]).toEqual(
+		expect.objectContaining({
+			headers: expect.objectContaining({ Authorization: "Bearer api-key" }),
+		}),
+	);
+	expect(fetchMock.mock.calls[2]?.[0]).toBe("https://api.kilo.ai/api/profile/balance");
+	expect(setStatus).toHaveBeenCalledWith("kilo-credits", "💰 $12.34");
+});
+
+test("session_start uses the API key organization for catalog and balance", async () => {
+	isolateAuth();
+	vi.stubEnv("KILO_API_KEY", "api-key");
+	vi.stubEnv("KILO_ORG_ID", "org-id");
+	const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (input) => {
+		if (String(input).endsWith("/balance")) {
+			return new Response(JSON.stringify({ balance: 12.34 }), { status: 200 });
+		}
+		return catalogResponse();
+	});
+	vi.stubGlobal("fetch", fetchMock);
+	const on = vi.fn();
+	const context = {
+		hasUI: true,
+		ui: { setStatus: vi.fn(), theme: { fg: vi.fn((_tone, text) => text) } },
+		modelRegistry: { registerProvider: vi.fn() },
+	};
+
+	await kiloExtension({ registerProvider: vi.fn(), on } as never);
+	await runSessionStart(on, context);
+
+	expect(fetchMock.mock.calls[1]).toEqual([
+		"https://api.kilo.ai/api/organizations/org-id/models",
+		expect.objectContaining({
+			headers: expect.objectContaining({
+				Authorization: "Bearer api-key",
+				"X-KiloCode-OrganizationId": "org-id",
+			}),
+		}),
+	]);
+	expect(fetchMock.mock.calls[2]?.[1]).toEqual(
+		expect.objectContaining({
+			headers: {
+				Authorization: "Bearer api-key",
+				"Content-Type": "application/json",
+				"X-KiloCode-OrganizationId": "org-id",
+			},
+		}),
+	);
+});
+
+test("session_start prefers OAuth credentials and account organization over API-key env values", async () => {
+	isolateAuth({ kilo: { type: "oauth", access: "oauth-token", accountId: "account-org" } });
+	vi.stubEnv("KILO_API_KEY", "api-key");
+	vi.stubEnv("KILO_ORG_ID", "env-org");
+	const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (input) => {
+		if (String(input).endsWith("/balance")) {
+			return new Response(JSON.stringify({ balance: 12.34 }), { status: 200 });
+		}
+		return catalogResponse();
+	});
+	vi.stubGlobal("fetch", fetchMock);
+	const on = vi.fn();
+	const context = {
+		hasUI: true,
+		ui: { setStatus: vi.fn(), theme: { fg: vi.fn((_tone, text) => text) } },
+		modelRegistry: { registerProvider: vi.fn() },
+	};
+
+	await kiloExtension({ registerProvider: vi.fn(), on } as never);
+	await runSessionStart(on, context);
+
+	for (const call of fetchMock.mock.calls.slice(0, 2)) {
+		expect(call[0]).toBe("https://api.kilo.ai/api/organizations/account-org/models");
+		expect(call[1]).toEqual(
+			expect.objectContaining({
+				headers: expect.objectContaining({
+					Authorization: "Bearer oauth-token",
+					"X-KiloCode-OrganizationId": "account-org",
+				}),
+			}),
+		);
+	}
+	expect(fetchMock.mock.calls[2]).toEqual([
+		"https://api.kilo.ai/api/profile/balance",
+		expect.objectContaining({
+			headers: {
+				Authorization: "Bearer oauth-token",
+				"Content-Type": "application/json",
+				"X-KiloCode-OrganizationId": "account-org",
+			},
+		}),
+	]);
+});
+
+test("model_select refreshes credits for API-key-only Kilo access", async () => {
+	isolateAuth();
+	vi.stubEnv("KILO_API_KEY", "api-key");
+	vi.stubEnv("KILO_ORG_ID", "org-id");
+	const fetchMock = vi
+		.fn<typeof fetch>()
+		.mockResolvedValueOnce(catalogResponse())
+		.mockResolvedValueOnce(new Response(JSON.stringify({ balance: 12.34 }), { status: 200 }));
+	vi.stubGlobal("fetch", fetchMock);
+	const on = vi.fn();
+	const setStatus = vi.fn();
+
+	await kiloExtension({ registerProvider: vi.fn(), on } as never);
+	const handler = on.mock.calls.find(([event]) => event === "model_select")?.[1] as never;
+	await handler(
+		{ model: { provider: "kilo" } },
+		{
+			hasUI: true,
+			ui: { setStatus, theme: { fg: vi.fn((_tone, text) => text) } },
+		},
+	);
+
+	expect(fetchMock.mock.calls[1]).toEqual([
+		"https://api.kilo.ai/api/profile/balance",
+		expect.objectContaining({
+			headers: {
+				Authorization: "Bearer api-key",
+				"Content-Type": "application/json",
+				"X-KiloCode-OrganizationId": "org-id",
+			},
+		}),
+	]);
+	expect(setStatus).toHaveBeenCalledWith("kilo-credits", "💰 $12.34");
+});
+
+test("model_select for another provider does not fetch balance", async () => {
+	isolateAuth();
+	vi.stubEnv("KILO_API_KEY", "api-key");
+	const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(catalogResponse());
+	vi.stubGlobal("fetch", fetchMock);
+	const on = vi.fn();
+	const setStatus = vi.fn();
+
+	await kiloExtension({ registerProvider: vi.fn(), on } as never);
+	const handler = on.mock.calls.find(([event]) => event === "model_select")?.[1] as never;
+	await handler({ model: { provider: "other" } }, { hasUI: true, ui: { setStatus } });
+
+	expect(fetchMock).toHaveBeenCalledOnce();
+	expect(setStatus).not.toHaveBeenCalled();
+});
+
+test("turn_end refreshes credits for API-key-only access", async () => {
+	isolateAuth();
+	vi.stubEnv("KILO_API_KEY", "api-key");
+	const fetchMock = vi
+		.fn<typeof fetch>()
+		.mockResolvedValueOnce(catalogResponse())
+		.mockResolvedValueOnce(new Response(JSON.stringify({ balance: 12.34 }), { status: 200 }));
+	vi.stubGlobal("fetch", fetchMock);
+	const on = vi.fn();
+	const setStatus = vi.fn();
+
+	await kiloExtension({ registerProvider: vi.fn(), on } as never);
+	const handler = on.mock.calls.find(([event]) => event === "turn_end")?.[1] as never;
+	await handler({}, { hasUI: true, ui: { setStatus, theme: { fg: vi.fn((_tone, text) => text) } } });
+
+	expect(fetchMock.mock.calls[1]?.[0]).toBe("https://api.kilo.ai/api/profile/balance");
+	expect(setStatus).toHaveBeenCalledWith("kilo-credits", "💰 $12.34");
+});
+
+test("credit event guards skip missing access and missing UI", async () => {
+	isolateAuth();
+	const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(catalogResponse());
+	vi.stubGlobal("fetch", fetchMock);
+	const on = vi.fn();
+	const setStatus = vi.fn();
+
+	await kiloExtension({ registerProvider: vi.fn(), on } as never);
+	const modelHandler = on.mock.calls.find(([event]) => event === "model_select")?.[1] as never;
+	await modelHandler({ model: { provider: "kilo" } }, { hasUI: true, ui: { setStatus } });
+	expect(fetchMock).toHaveBeenCalledOnce();
+	expect(setStatus).not.toHaveBeenCalled();
+
+	isolateAuth();
+	vi.stubEnv("KILO_API_KEY", "api-key");
+	const turnHandler = on.mock.calls.find(([event]) => event === "turn_end")?.[1] as never;
+	await turnHandler({}, { hasUI: false, ui: { setStatus } });
+	expect(fetchMock).toHaveBeenCalledOnce();
+	expect(setStatus).not.toHaveBeenCalled();
+});
+
+test("session_start clears credits and makes no authenticated request without auth", async () => {
+	isolateAuth();
+	const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(catalogResponse());
+	vi.stubGlobal("fetch", fetchMock);
+	const on = vi.fn();
+	const setStatus = vi.fn();
+
+	await kiloExtension({ registerProvider: vi.fn(), on } as never);
+	await runSessionStart(on, { hasUI: true, ui: { setStatus }, modelRegistry: { registerProvider: vi.fn() } });
+
+	expect(fetchMock).toHaveBeenCalledOnce();
+	expect(fetchMock.mock.calls[0]?.[0]).toBe("https://api.kilo.ai/api/gateway/models");
+	expect(setStatus).toHaveBeenCalledWith("kilo-credits", undefined);
+});
+
+test("before_agent_start suppresses the ToS notice for API-key and OAuth access", async () => {
+	for (const auth of [{}, { kilo: { type: "oauth", access: "oauth-token" } }]) {
+		isolateAuth(auth);
+		if (Object.keys(auth).length === 0) vi.stubEnv("KILO_API_KEY", "api-key");
+		vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(catalogResponse()));
+		const on = vi.fn();
+
+		await kiloExtension({ registerProvider: vi.fn(), on } as never);
+		const handler = on.mock.calls.find(([event]) => event === "before_agent_start")?.[1] as never;
+		await expect(handler({}, { model: { provider: "kilo" } })).resolves.toBeUndefined();
+	}
+});
+
+test("before_agent_start returns the exact notice only for unauthenticated Kilo use", async () => {
+	isolateAuth();
+	vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(catalogResponse()));
+	const on = vi.fn();
+
+	await kiloExtension({ registerProvider: vi.fn(), on } as never);
+	const handler = on.mock.calls.find(([event]) => event === "before_agent_start")?.[1] as never;
+	const context = { model: { provider: "kilo" } };
+	const expected = {
+		message: {
+			customType: "kilo",
+			content: "By using Kilo, you agree to the Terms of Service: https://kilo.ai/terms",
+			display: true,
+		},
+	};
+
+	await expect(handler({}, context)).resolves.toEqual(expected);
+	await expect(handler({}, context)).resolves.toBeUndefined();
+});
+
+test("before_agent_start does not consume the notice for another provider", async () => {
+	isolateAuth();
+	vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(catalogResponse()));
+	const on = vi.fn();
+
+	await kiloExtension({ registerProvider: vi.fn(), on } as never);
+	const handler = on.mock.calls.find(([event]) => event === "before_agent_start")?.[1] as never;
+	await expect(handler({}, { model: { provider: "other" } })).resolves.toBeUndefined();
+	await expect(handler({}, { model: { provider: "kilo" } })).resolves.toMatchObject({
+		message: { customType: "kilo", display: true },
+	});
+});
+
+test("session_start refreshes the catalog without balance work when UI is unavailable", async () => {
+	isolateAuth();
+	vi.stubEnv("KILO_API_KEY", "api-key");
+	const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(catalogResponse());
+	vi.stubGlobal("fetch", fetchMock);
+	const on = vi.fn();
+	const setStatus = vi.fn();
+
+	await kiloExtension({ registerProvider: vi.fn(), on } as never);
+	await runSessionStart(on, {
+		hasUI: false,
+		ui: { setStatus },
+		modelRegistry: { registerProvider: vi.fn() },
+	});
+
+	expect(fetchMock).toHaveBeenCalledTimes(2);
+	expect(fetchMock.mock.calls[1]?.[0]).toBe("https://api.kilo.ai/api/gateway/models");
+	expect(setStatus).not.toHaveBeenCalled();
 });
