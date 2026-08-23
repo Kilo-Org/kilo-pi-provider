@@ -6,6 +6,7 @@
   "license": "BSL-1.0",
   "scripts": {
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "check": "biome check --write --error-on-warnings .",
     "prepare": "prek install"
   },
@@ -20,6 +21,7 @@
     "@biomejs/biome": "2.3.5",
     "@earendil-works/pi-tui": "0.84.2",
     "@j178/prek": "0.4.14",
+    "@vitest/coverage-v8": "4.1.9",
     "vitest": "4.1.9"
   }
 }
