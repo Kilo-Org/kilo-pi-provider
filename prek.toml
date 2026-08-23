@@ -1,0 +1,9 @@
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "biome"
+name = "Biome"
+language = "system"
+entry = "npm run check"
+pass_filenames = false

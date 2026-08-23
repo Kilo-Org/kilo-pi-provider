@@ -24,3 +24,12 @@ test("provides the upstream Pi Biome check", () => {
 		formatter: { enabled: true, indentStyle: "tab", indentWidth: 3, lineWidth: 120 },
 	});
 });
+
+test("installs a Prek hook that runs the Biome check", () => {
+	expect(packageJson.scripts.prepare).toBe("prek install");
+	expect(packageJson.devDependencies["@j178/prek"]).toBe("0.4.14");
+
+	const prekConfig = readFileSync(resolve(repositoryRoot, "prek.toml"), "utf8");
+	expect(prekConfig).toContain('entry = "npm run check"');
+	expect(prekConfig).toContain("pass_filenames = false");
+});

@@ -53,11 +53,25 @@ Kilo credits remain available as the `kilo-credits` footer status.
 
 ## Development
 
-Install dependencies and run the tests:
+Install dependencies:
 
 ```bash
 npm ci
+```
+
+This installs [Prek](https://github.com/j178/prek)'s pre-commit hook. Before each commit it runs Biome, which applies safe formatting and lint fixes. If it changes files, review and stage those changes before committing again.
+
+Run the checks and tests directly with:
+
+```bash
+npm run check
 npm test
+```
+
+To run the pre-commit hook against every tracked file:
+
+```bash
+npx prek run --all-files
 ```
 
 ## License and attribution
