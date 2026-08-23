@@ -20,6 +20,7 @@ import { fetchKiloBalance, KILO_API_BASE, KILO_ORG_HEADER, withOrganizationHeade
 import {
 	getEffectiveOrganizationId,
 	getEnvOrganizationId,
+	getKiloAccess,
 	loginKilo,
 	readStoredKiloCredentials,
 	refreshKiloToken,
@@ -120,19 +121,17 @@ function makeProviderConfig(organizationId?: string) {
 // =============================================================================
 
 export default async function (pi: ExtensionAPI) {
-	const storedCredentials = readStoredKiloCredentials();
-	const startupCatalogToken = storedCredentials?.access ?? process.env.KILO_API_KEY;
-	const startupOrganizationId = getEffectiveOrganizationId(storedCredentials);
+	const startupAccess = getKiloAccess();
 
 	// Fetch models at load time so the provider is immediately usable for
 	// --list-models, --model selection, and print mode before session_start fires.
 	let freeModels: ProviderModelConfig[] = [];
 	let cachedAllModels: ProviderModelConfig[] = [];
 	try {
-		if (startupCatalogToken) {
+		if (startupAccess) {
 			cachedAllModels = await fetchKiloModels({
-				token: startupCatalogToken,
-				organizationId: startupOrganizationId,
+				token: startupAccess.token,
+				organizationId: startupAccess.organizationId,
 			});
 			freeModels = cachedAllModels.length > 0 ? cachedAllModels : [];
 		} else {
@@ -209,18 +208,18 @@ export default async function (pi: ExtensionAPI) {
 	// After session starts, pre-fetch all models if already logged in so
 	// modifyModels has data to work with. Also fetch and display credits.
 	pi.on("session_start", async (_event, ctx) => {
-		const cred = readStoredKiloCredentials();
+		const access = getKiloAccess();
 
 		// Clear credits if not logged in
-		if (cred?.type !== "oauth") {
+		if (!access) {
 			ctx.ui.setStatus("kilo-credits", undefined);
 			return;
 		}
 
 		try {
 			cachedAllModels = await fetchKiloModels({
-				token: cred.access,
-				organizationId: getEffectiveOrganizationId(cred),
+				token: access.token,
+				organizationId: access.organizationId,
 			});
 		} catch (error) {
 			console.warn(
@@ -232,7 +231,7 @@ export default async function (pi: ExtensionAPI) {
 		if (cachedAllModels.length > 0) {
 			// Re-register to trigger modifyModels with the cached data.
 			ctx.modelRegistry.registerProvider("kilo", {
-				...makeProviderConfig(getEffectiveOrganizationId(cred)),
+				...makeProviderConfig(access.organizationId),
 				models: freeModels,
 				oauth: makeOAuthConfig(),
 			});
@@ -241,7 +240,7 @@ export default async function (pi: ExtensionAPI) {
 		// Fetch and display credits balance when an interactive UI is available.
 		if (ctx.hasUI) {
 			try {
-				const balance = await fetchKiloBalance(cred.access, getEffectiveOrganizationId(cred));
+				const balance = await fetchKiloBalance(access.token, access.organizationId);
 				if (balance !== null) {
 					const theme = ctx.ui.theme;
 					ctx.ui.setStatus("kilo-credits", theme.fg("accent", `💰 ${formatCredits(balance)}`));
