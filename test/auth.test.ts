@@ -344,37 +344,36 @@ describe("readStoredKiloCredentials", () => {
 });
 
 describe("getKiloAccess", () => {
-	test("prefers stored OAuth access and account organization over environment values", () => {
-		withAuthFile(JSON.stringify({ kilo: { type: "oauth", access: "oauth-token", accountId: "account-org" } }));
-		vi.stubEnv("KILO_API_KEY", "api-key");
-		vi.stubEnv("KILO_ORG_ID", "env-org");
+	test.each([
+		[
+			"prefers stored OAuth access and account organization",
+			{ kilo: { type: "oauth", access: "oauth-token", accountId: "account-org" } },
+			{ KILO_API_KEY: "api-key", KILO_ORG_ID: "env-org", KILOCODE_ORGANIZATION_ID: "legacy-org" },
+			{ token: "oauth-token", organizationId: "account-org" },
+		],
+		[
+			"uses KILO_ORG_ID for API-key access",
+			{},
+			{ KILO_API_KEY: "api-key", KILO_ORG_ID: "kilo-org", KILOCODE_ORGANIZATION_ID: "legacy-org" },
+			{ token: "api-key", organizationId: "kilo-org" },
+		],
+		[
+			"uses the legacy organization variable for API-key access",
+			{},
+			{ KILO_API_KEY: "api-key", KILO_ORG_ID: "", KILOCODE_ORGANIZATION_ID: "legacy-org" },
+			{ token: "api-key", organizationId: "legacy-org" },
+		],
+		[
+			"returns undefined without credentials",
+			{},
+			{ KILO_API_KEY: "", KILO_ORG_ID: "", KILOCODE_ORGANIZATION_ID: "" },
+			undefined,
+		],
+	])("%s", (_name, auth, environment, expected) => {
+		withAuthFile(JSON.stringify(auth));
+		for (const [name, value] of Object.entries(environment)) vi.stubEnv(name, value);
 
-		expect(getKiloAccess()).toEqual({ token: "oauth-token", organizationId: "account-org" });
-	});
-
-	test("uses KILO_ORG_ID before KILOCODE_ORGANIZATION_ID for API-key access", () => {
-		withAuthFile(JSON.stringify({}));
-		vi.stubEnv("KILO_API_KEY", "api-key");
-		vi.stubEnv("KILO_ORG_ID", "kilo-org");
-		vi.stubEnv("KILOCODE_ORGANIZATION_ID", "legacy-org");
-
-		expect(getKiloAccess()).toEqual({ token: "api-key", organizationId: "kilo-org" });
-	});
-
-	test("uses KILOCODE_ORGANIZATION_ID for API-key-only access when needed", () => {
-		withAuthFile(JSON.stringify({}));
-		vi.stubEnv("KILO_API_KEY", "api-key");
-		vi.stubEnv("KILO_ORG_ID", "");
-		vi.stubEnv("KILOCODE_ORGANIZATION_ID", "legacy-org");
-
-		expect(getKiloAccess()).toEqual({ token: "api-key", organizationId: "legacy-org" });
-	});
-
-	test("returns undefined without OAuth credentials or an API key", () => {
-		withAuthFile(JSON.stringify({}));
-		vi.stubEnv("KILO_API_KEY", "");
-
-		expect(getKiloAccess()).toBeUndefined();
+		expect(getKiloAccess()).toEqual(expected);
 	});
 });
 
