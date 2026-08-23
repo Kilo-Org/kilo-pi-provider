@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { KILO_API_BASE } from "../api.ts";
+import { KILO_API_BASE } from "../src/api.ts";
 import {
 	abortableSleep,
 	getAgentDir,
@@ -16,7 +16,7 @@ import {
 	readStoredKiloCredentials,
 	refreshKiloToken,
 	selectKiloOrganization,
-} from "../auth.ts";
+} from "../src/auth.ts";
 
 const temporaryDirectories: string[] = [];
 

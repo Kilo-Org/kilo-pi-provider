@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
-import kiloExtension, { parsePrice, usesCustomFooter } from "../kilo.ts";
+import kiloExtension, { parsePrice, usesCustomFooter } from "../src/index.ts";
 
 const temporaryDirectories: string[] = [];
 

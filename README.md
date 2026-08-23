@@ -53,6 +53,8 @@ Kilo credits remain available as the `kilo-credits` footer status.
 
 ## Development
 
+Source modules are under `src/`; `src/index.ts` is the Pi extension entry point.
+
 Install dependencies:
 
 ```bash

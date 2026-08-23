@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { fetchKiloBalance, fetchKiloProfile, KILO_API_BASE, KILO_ORG_HEADER, withOrganizationHeader } from "../api.ts";
+import {
+	fetchKiloBalance,
+	fetchKiloProfile,
+	KILO_API_BASE,
+	KILO_ORG_HEADER,
+	withOrganizationHeader,
+} from "../src/api.ts";
 
 afterEach(() => {
 	vi.unstubAllGlobals();
