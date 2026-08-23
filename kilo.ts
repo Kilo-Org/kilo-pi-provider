@@ -22,7 +22,6 @@ import {
 	getEnvOrganizationId,
 	getKiloAccess,
 	loginKilo,
-	readStoredKiloCredentials,
 	refreshKiloToken,
 } from "./auth.ts";
 
@@ -299,8 +298,7 @@ export default async function (pi: ExtensionAPI) {
 		if (tosShown) return;
 		if (ctx.model?.provider !== "kilo") return;
 
-		const cred = readStoredKiloCredentials();
-		if (cred?.type === "oauth") {
+		if (getKiloAccess()) {
 			tosShown = true;
 			return;
 		}

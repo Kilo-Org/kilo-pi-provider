@@ -466,6 +466,52 @@ test("session_start clears credits and makes no authenticated request without au
 	expect(setStatus).toHaveBeenCalledWith("kilo-credits", undefined);
 });
 
+test("before_agent_start suppresses the ToS notice for API-key and OAuth access", async () => {
+	for (const auth of [{}, { kilo: { type: "oauth", access: "oauth-token" } }]) {
+		isolateAuth(auth);
+		if (Object.keys(auth).length === 0) vi.stubEnv("KILO_API_KEY", "api-key");
+		vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(catalogResponse()));
+		const on = vi.fn();
+
+		await kiloExtension({ registerProvider: vi.fn(), on } as never);
+		const handler = on.mock.calls.find(([event]) => event === "before_agent_start")?.[1] as never;
+		await expect(handler({}, { model: { provider: "kilo" } })).resolves.toBeUndefined();
+	}
+});
+
+test("before_agent_start returns the exact notice only for unauthenticated Kilo use", async () => {
+	isolateAuth();
+	vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(catalogResponse()));
+	const on = vi.fn();
+
+	await kiloExtension({ registerProvider: vi.fn(), on } as never);
+	const handler = on.mock.calls.find(([event]) => event === "before_agent_start")?.[1] as never;
+	const context = { model: { provider: "kilo" } };
+	const expected = {
+		message: {
+			customType: "kilo",
+			content: "By using Kilo, you agree to the Terms of Service: https://kilo.ai/terms",
+			display: true,
+		},
+	};
+
+	await expect(handler({}, context)).resolves.toEqual(expected);
+	await expect(handler({}, context)).resolves.toBeUndefined();
+});
+
+test("before_agent_start does not consume the notice for another provider", async () => {
+	isolateAuth();
+	vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(catalogResponse()));
+	const on = vi.fn();
+
+	await kiloExtension({ registerProvider: vi.fn(), on } as never);
+	const handler = on.mock.calls.find(([event]) => event === "before_agent_start")?.[1] as never;
+	await expect(handler({}, { model: { provider: "other" } })).resolves.toBeUndefined();
+	await expect(handler({}, { model: { provider: "kilo" } })).resolves.toMatchObject({
+		message: { customType: "kilo", display: true },
+	});
+});
+
 test("session_start refreshes the catalog without balance work when UI is unavailable", async () => {
 	isolateAuth();
 	vi.stubEnv("KILO_API_KEY", "api-key");
