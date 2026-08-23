@@ -2,554 +2,552 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import {
-  abortableSleep,
-  getAgentDir,
-  getCredentialOrganizationId,
-  initiateDeviceAuth,
-  loginKilo,
-  pollDeviceAuth,
-  refreshKiloToken,
-  selectKiloOrganization,
-  getEffectiveOrganizationId,
-  getEnvOrganizationId,
-  readStoredKiloCredentials,
-} from "../auth.ts";
 import { KILO_API_BASE } from "../api.ts";
+import {
+	abortableSleep,
+	getAgentDir,
+	getCredentialOrganizationId,
+	getEffectiveOrganizationId,
+	getEnvOrganizationId,
+	initiateDeviceAuth,
+	loginKilo,
+	pollDeviceAuth,
+	readStoredKiloCredentials,
+	refreshKiloToken,
+	selectKiloOrganization,
+} from "../auth.ts";
 
 const temporaryDirectories: string[] = [];
 
 afterEach(() => {
-  vi.useRealTimers();
-  vi.unstubAllEnvs();
-  vi.unstubAllGlobals();
-  vi.restoreAllMocks();
-  for (const directory of temporaryDirectories.splice(0)) {
-    rmSync(directory, { recursive: true, force: true });
-  }
+	vi.useRealTimers();
+	vi.unstubAllEnvs();
+	vi.unstubAllGlobals();
+	vi.restoreAllMocks();
+	for (const directory of temporaryDirectories.splice(0)) {
+		rmSync(directory, { recursive: true, force: true });
+	}
 });
 
 describe("refreshKiloToken", () => {
-  test("returns the exact same credentials object when not expired", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(1000);
-    const credentials = { type: "oauth", access: "token", expires: 1001 } as never;
+	test("returns the exact same credentials object when not expired", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(1000);
+		const credentials = { type: "oauth", access: "token", expires: 1001 } as never;
 
-    await expect(refreshKiloToken(credentials)).resolves.toBe(credentials);
-  });
+		await expect(refreshKiloToken(credentials)).resolves.toBe(credentials);
+	});
 
-  test("throws the exact error when expired", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(1000);
-    const credentials = { type: "oauth", access: "token", expires: 999 } as never;
+	test("throws the exact error when expired", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(1000);
+		const credentials = { type: "oauth", access: "token", expires: 999 } as never;
 
-    await expect(refreshKiloToken(credentials)).rejects.toThrow(
-      "Kilo token expired. Please run /login kilo to re-authenticate.",
-    );
-  });
+		await expect(refreshKiloToken(credentials)).rejects.toThrow(
+			"Kilo token expired. Please run /login kilo to re-authenticate.",
+		);
+	});
 
-  test("treats expiration equal to Date.now as expired", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(1000);
-    const credentials = { type: "oauth", access: "token", expires: 1000 } as never;
+	test("treats expiration equal to Date.now as expired", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(1000);
+		const credentials = { type: "oauth", access: "token", expires: 1000 } as never;
 
-    await expect(refreshKiloToken(credentials)).rejects.toThrow(
-      "Kilo token expired. Please run /login kilo to re-authenticate.",
-    );
-  });
+		await expect(refreshKiloToken(credentials)).rejects.toThrow(
+			"Kilo token expired. Please run /login kilo to re-authenticate.",
+		);
+	});
 });
 
 describe("loginKilo", () => {
-  function setupLoginFetch(responses: Response[]): ReturnType<typeof vi.fn<typeof fetch>> {
-    const fetchMock = vi.fn<typeof fetch>();
-    for (const response of responses) fetchMock.mockResolvedValueOnce(response);
-    vi.stubGlobal("fetch", fetchMock);
-    return fetchMock;
-  }
+	function setupLoginFetch(responses: Response[]): ReturnType<typeof vi.fn<typeof fetch>> {
+		const fetchMock = vi.fn<typeof fetch>();
+		for (const response of responses) fetchMock.mockResolvedValueOnce(response);
+		vi.stubGlobal("fetch", fetchMock);
+		return fetchMock;
+	}
 
-  test("reports initiation, auth instructions, waiting, and success progress", async () => {
-    vi.useFakeTimers();
-    setupLoginFetch([
-      new Response(JSON.stringify({ code: "abc", verificationUrl: "https://verify", expiresIn: 60 }), { status: 200 }),
-      new Response(JSON.stringify({ status: "approved", token: "token" }), { status: 200 }),
-      new Response(JSON.stringify({ organizations: [] }), { status: 200 }),
-    ]);
-    const onProgress = vi.fn();
-    const onAuth = vi.fn();
-    const promise = loginKilo({ onProgress, onAuth });
-    await vi.advanceTimersByTimeAsync(3000);
-    await expect(promise).resolves.toEqual(expect.objectContaining({ access: "token" }));
-    expect(onProgress.mock.calls).toEqual([
-      ["Initiating device authorization..."],
-      ["Waiting for browser authorization..."],
-      ["Login successful!"],
-      ["Fetching Kilo profile..."],
-    ]);
-    expect(onAuth).toHaveBeenCalledWith({
-      url: "https://verify",
-      instructions: "Enter code: abc",
-    });
-  });
+	test("reports initiation, auth instructions, waiting, and success progress", async () => {
+		vi.useFakeTimers();
+		setupLoginFetch([
+			new Response(JSON.stringify({ code: "abc", verificationUrl: "https://verify", expiresIn: 60 }), {
+				status: 200,
+			}),
+			new Response(JSON.stringify({ status: "approved", token: "token" }), { status: 200 }),
+			new Response(JSON.stringify({ organizations: [] }), { status: 200 }),
+		]);
+		const onProgress = vi.fn();
+		const onAuth = vi.fn();
+		const promise = loginKilo({ onProgress, onAuth });
+		await vi.advanceTimersByTimeAsync(3000);
+		await expect(promise).resolves.toEqual(expect.objectContaining({ access: "token" }));
+		expect(onProgress.mock.calls).toEqual([
+			["Initiating device authorization..."],
+			["Waiting for browser authorization..."],
+			["Login successful!"],
+			["Fetching Kilo profile..."],
+		]);
+		expect(onAuth).toHaveBeenCalledWith({
+			url: "https://verify",
+			instructions: "Enter code: abc",
+		});
+	});
 
-  test("returns pending then approved credentials with selected organization", async () => {
-    const now = 1_000_000;
-    vi.useFakeTimers();
-    vi.setSystemTime(now);
-    setupLoginFetch([
-      new Response(JSON.stringify({ code: "code", verificationUrl: "url", expiresIn: 60 }), { status: 200 }),
-      new Response(null, { status: 202 }),
-      new Response(JSON.stringify({ status: "approved", token: "token" }), { status: 200 }),
-      new Response(JSON.stringify({ organizations: [{ id: "org", name: "Org" }] }), { status: 200 }),
-    ]);
-    const onProgress = vi.fn();
-    const onSelect = vi.fn().mockResolvedValue("org");
+	test("returns pending then approved credentials with selected organization", async () => {
+		const now = 1_000_000;
+		vi.useFakeTimers();
+		vi.setSystemTime(now);
+		setupLoginFetch([
+			new Response(JSON.stringify({ code: "code", verificationUrl: "url", expiresIn: 60 }), { status: 200 }),
+			new Response(null, { status: 202 }),
+			new Response(JSON.stringify({ status: "approved", token: "token" }), { status: 200 }),
+			new Response(JSON.stringify({ organizations: [{ id: "org", name: "Org" }] }), { status: 200 }),
+		]);
+		const onProgress = vi.fn();
+		const onSelect = vi.fn().mockResolvedValue("org");
 
-    const promise = loginKilo({ onProgress, onSelect, onAuth: vi.fn() });
-    await vi.advanceTimersByTimeAsync(3000);
-    await vi.advanceTimersByTimeAsync(3000);
-    const credentials = await promise;
+		const promise = loginKilo({ onProgress, onSelect, onAuth: vi.fn() });
+		await vi.advanceTimersByTimeAsync(3000);
+		await vi.advanceTimersByTimeAsync(3000);
+		const credentials = await promise;
 
-    expect(credentials).toEqual({
-      refresh: "token",
-      access: "token",
-      expires: now + 6000 + 365 * 24 * 60 * 60 * 1000,
-      accountId: "org",
-    });
-    expect(onProgress).toHaveBeenCalledWith("Waiting for browser authorization... (57s remaining)");
-  });
+		expect(credentials).toEqual({
+			refresh: "token",
+			access: "token",
+			expires: now + 6000 + 365 * 24 * 60 * 60 * 1000,
+			accountId: "org",
+		});
+		expect(onProgress).toHaveBeenCalledWith("Waiting for browser authorization... (57s remaining)");
+	});
 
-  test("omits accountId for personal selection", async () => {
-    vi.useFakeTimers();
-    setupLoginFetch([
-      new Response(JSON.stringify({ code: "code", verificationUrl: "url", expiresIn: 60 }), { status: 200 }),
-      new Response(JSON.stringify({ status: "approved", token: "token" }), { status: 200 }),
-      new Response(JSON.stringify({ organizations: [{ id: "org", name: "Org" }] }), { status: 200 }),
-    ]);
-    const promise = loginKilo({ onSelect: vi.fn().mockResolvedValue("personal"), onAuth: vi.fn() });
-    await vi.advanceTimersByTimeAsync(3000);
-    await expect(promise).resolves.toEqual(expect.not.objectContaining({ accountId: expect.anything() }));
-  });
+	test("omits accountId for personal selection", async () => {
+		vi.useFakeTimers();
+		setupLoginFetch([
+			new Response(JSON.stringify({ code: "code", verificationUrl: "url", expiresIn: 60 }), { status: 200 }),
+			new Response(JSON.stringify({ status: "approved", token: "token" }), { status: 200 }),
+			new Response(JSON.stringify({ organizations: [{ id: "org", name: "Org" }] }), { status: 200 }),
+		]);
+		const promise = loginKilo({ onSelect: vi.fn().mockResolvedValue("personal"), onAuth: vi.fn() });
+		await vi.advanceTimersByTimeAsync(3000);
+		await expect(promise).resolves.toEqual(expect.not.objectContaining({ accountId: expect.anything() }));
+	});
 
-  test.each([
-    ["approved missing token", { status: "approved" }, "Authorization approved but no token received"],
-    ["denied", { status: "denied" }, "Authorization denied by user."],
-    ["expired", { status: "expired" }, "Authorization code expired. Please try again."],
-  ])("throws exact error for %s", async (_name, result, message) => {
-    vi.useFakeTimers();
-    setupLoginFetch([
-      new Response(JSON.stringify({ code: "code", verificationUrl: "url", expiresIn: 60 }), { status: 200 }),
-      new Response(JSON.stringify(result), { status: 200 }),
-      ...(result.status === "approved" ? [new Response(JSON.stringify({ organizations: [] }), { status: 200 })] : []),
-    ]);
-    const promise = loginKilo({ onAuth: vi.fn() });
-    const rejection = expect(promise).rejects.toThrow(message);
-    await vi.advanceTimersByTimeAsync(3000);
-    await rejection;
-  });
+	test.each([
+		["approved missing token", { status: "approved" }, "Authorization approved but no token received"],
+		["denied", { status: "denied" }, "Authorization denied by user."],
+		["expired", { status: "expired" }, "Authorization code expired. Please try again."],
+	])("throws exact error for %s", async (_name, result, message) => {
+		vi.useFakeTimers();
+		setupLoginFetch([
+			new Response(JSON.stringify({ code: "code", verificationUrl: "url", expiresIn: 60 }), { status: 200 }),
+			new Response(JSON.stringify(result), { status: 200 }),
+			...(result.status === "approved"
+				? [new Response(JSON.stringify({ organizations: [] }), { status: 200 })]
+				: []),
+		]);
+		const promise = loginKilo({ onAuth: vi.fn() });
+		const rejection = expect(promise).rejects.toThrow(message);
+		await vi.advanceTimersByTimeAsync(3000);
+		await rejection;
+	});
 
-  test("throws Login cancelled when aborted", async () => {
-    vi.useFakeTimers();
-    setupLoginFetch([
-      new Response(JSON.stringify({ code: "code", verificationUrl: "url", expiresIn: 60 }), { status: 200 }),
-    ]);
-    const controller = new AbortController();
-    const promise = loginKilo({ signal: controller.signal, onAuth: vi.fn() });
-    const rejection = expect(promise).rejects.toThrow("Login cancelled");
-    controller.abort();
-    await rejection;
-  });
+	test("throws Login cancelled when aborted", async () => {
+		vi.useFakeTimers();
+		setupLoginFetch([
+			new Response(JSON.stringify({ code: "code", verificationUrl: "url", expiresIn: 60 }), { status: 200 }),
+		]);
+		const controller = new AbortController();
+		const promise = loginKilo({ signal: controller.signal, onAuth: vi.fn() });
+		const rejection = expect(promise).rejects.toThrow("Login cancelled");
+		controller.abort();
+		await rejection;
+	});
 
-  test("throws exact timeout after deadline exhaustion", async () => {
-    vi.useFakeTimers();
-    setupLoginFetch([
-      new Response(JSON.stringify({ code: "code", verificationUrl: "url", expiresIn: 3 }), { status: 200 }),
-      new Response(null, { status: 202 }),
-    ]);
-    const promise = loginKilo({ onAuth: vi.fn() });
-    const rejection = expect(promise).rejects.toThrow("Authentication timed out. Please try again.");
-    await vi.advanceTimersByTimeAsync(3000);
-    await rejection;
-  });
+	test("throws exact timeout after deadline exhaustion", async () => {
+		vi.useFakeTimers();
+		setupLoginFetch([
+			new Response(JSON.stringify({ code: "code", verificationUrl: "url", expiresIn: 3 }), { status: 200 }),
+			new Response(null, { status: 202 }),
+		]);
+		const promise = loginKilo({ onAuth: vi.fn() });
+		const rejection = expect(promise).rejects.toThrow("Authentication timed out. Please try again.");
+		await vi.advanceTimersByTimeAsync(3000);
+		await rejection;
+	});
 });
 
 describe("device authorization", () => {
-  test("initiates device authorization with the exact POST request", async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(JSON.stringify({ code: "code", verificationUrl: "url", expiresIn: 60 }), {
-        status: 200,
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+	test("initiates device authorization with the exact POST request", async () => {
+		const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+			new Response(JSON.stringify({ code: "code", verificationUrl: "url", expiresIn: 60 }), {
+				status: 200,
+			}),
+		);
+		vi.stubGlobal("fetch", fetchMock);
 
-    await initiateDeviceAuth();
+		await initiateDeviceAuth();
 
-    expect(fetchMock).toHaveBeenCalledWith(`${KILO_API_BASE}/api/device-auth/codes`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
-  });
+		expect(fetchMock).toHaveBeenCalledWith(`${KILO_API_BASE}/api/device-auth/codes`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+		});
+	});
 
-  test("returns parsed device authorization success", async () => {
-    const response = { code: "code", verificationUrl: "url", expiresIn: 60 };
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(response), { status: 200 })),
-    );
+	test("returns parsed device authorization success", async () => {
+		const response = { code: "code", verificationUrl: "url", expiresIn: 60 };
+		vi.stubGlobal(
+			"fetch",
+			vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(response), { status: 200 })),
+		);
 
-    await expect(initiateDeviceAuth()).resolves.toEqual(response);
-  });
+		await expect(initiateDeviceAuth()).resolves.toEqual(response);
+	});
 
-  test("throws the exact rate-limit message", async () => {
-    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 429 })));
+	test("throws the exact rate-limit message", async () => {
+		vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 429 })));
 
-    await expect(initiateDeviceAuth()).rejects.toThrow(
-      "Too many pending authorization requests. Please try again later.",
-    );
-  });
+		await expect(initiateDeviceAuth()).rejects.toThrow(
+			"Too many pending authorization requests. Please try again later.",
+		);
+	});
 
-  test("throws the exact generic initiation status message", async () => {
-    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 500 })));
+	test("throws the exact generic initiation status message", async () => {
+		vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 500 })));
 
-    await expect(initiateDeviceAuth()).rejects.toThrow(
-      "Failed to initiate device authorization: 500",
-    );
-  });
+		await expect(initiateDeviceAuth()).rejects.toThrow("Failed to initiate device authorization: 500");
+	});
 
-  test("propagates an initiation fetch rejection unchanged", async () => {
-    const error = new Error("initiation network failure");
-    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockRejectedValue(error));
+	test("propagates an initiation fetch rejection unchanged", async () => {
+		const error = new Error("initiation network failure");
+		vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockRejectedValue(error));
 
-    await expect(initiateDeviceAuth()).rejects.toBe(error);
-  });
+		await expect(initiateDeviceAuth()).rejects.toBe(error);
+	});
 
-  test("polls the exact code endpoint and parses OK responses", async () => {
-    const response = { status: "approved", token: "token", userEmail: "user@example.com" };
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(JSON.stringify(response), { status: 200 }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+	test("polls the exact code endpoint and parses OK responses", async () => {
+		const response = { status: "approved", token: "token", userEmail: "user@example.com" };
+		const fetchMock = vi
+			.fn<typeof fetch>()
+			.mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));
+		vi.stubGlobal("fetch", fetchMock);
 
-    await expect(pollDeviceAuth("code value")).resolves.toEqual(response);
-    expect(fetchMock).toHaveBeenCalledWith(`${KILO_API_BASE}/api/device-auth/codes/code value`);
-  });
+		await expect(pollDeviceAuth("code value")).resolves.toEqual(response);
+		expect(fetchMock).toHaveBeenCalledWith(`${KILO_API_BASE}/api/device-auth/codes/code value`);
+	});
 
-  test.each([
-    [202, { status: "pending" }],
-    [403, { status: "denied" }],
-    [410, { status: "expired" }],
-  ])("maps status %s exactly", async (status, expected) => {
-    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status })));
+	test.each([
+		[202, { status: "pending" }],
+		[403, { status: "denied" }],
+		[410, { status: "expired" }],
+	])("maps status %s exactly", async (status, expected) => {
+		vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status })));
 
-    await expect(pollDeviceAuth("code")).resolves.toEqual(expected);
-  });
+		await expect(pollDeviceAuth("code")).resolves.toEqual(expected);
+	});
 
-  test("throws the exact generic poll failure", async () => {
-    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 500 })));
+	test("throws the exact generic poll failure", async () => {
+		vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 500 })));
 
-    await expect(pollDeviceAuth("code")).rejects.toThrow(
-      "Failed to poll device authorization: 500",
-    );
-  });
+		await expect(pollDeviceAuth("code")).rejects.toThrow("Failed to poll device authorization: 500");
+	});
 
-  test("propagates a poll fetch rejection unchanged", async () => {
-    const error = new Error("poll network failure");
-    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockRejectedValue(error));
+	test("propagates a poll fetch rejection unchanged", async () => {
+		const error = new Error("poll network failure");
+		vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockRejectedValue(error));
 
-    await expect(pollDeviceAuth("code")).rejects.toBe(error);
-  });
+		await expect(pollDeviceAuth("code")).rejects.toBe(error);
+	});
 
-  test("resolves after the requested interval", async () => {
-    vi.useFakeTimers();
-    const promise = abortableSleep(3000);
-    await vi.advanceTimersByTimeAsync(2999);
-    let settled = false;
-    void promise.then(() => { settled = true; });
-    await Promise.resolve();
-    expect(settled).toBe(false);
-    await vi.advanceTimersByTimeAsync(1);
-    await expect(promise).resolves.toBeUndefined();
-  });
+	test("resolves after the requested interval", async () => {
+		vi.useFakeTimers();
+		const promise = abortableSleep(3000);
+		await vi.advanceTimersByTimeAsync(2999);
+		let settled = false;
+		void promise.then(() => {
+			settled = true;
+		});
+		await Promise.resolve();
+		expect(settled).toBe(false);
+		await vi.advanceTimersByTimeAsync(1);
+		await expect(promise).resolves.toBeUndefined();
+	});
 
-  test("rejects immediately when already aborted", async () => {
-    const controller = new AbortController();
-    controller.abort();
+	test("rejects immediately when already aborted", async () => {
+		const controller = new AbortController();
+		controller.abort();
 
-    await expect(abortableSleep(3000, controller.signal)).rejects.toThrow("Login cancelled");
-  });
+		await expect(abortableSleep(3000, controller.signal)).rejects.toThrow("Login cancelled");
+	});
 
-  test("rejects on mid-wait abort and clears the pending timeout", async () => {
-    vi.useFakeTimers();
-    const controller = new AbortController();
-    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout");
-    const promise = abortableSleep(3000, controller.signal);
+	test("rejects on mid-wait abort and clears the pending timeout", async () => {
+		vi.useFakeTimers();
+		const controller = new AbortController();
+		const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout");
+		const promise = abortableSleep(3000, controller.signal);
 
-    controller.abort();
+		controller.abort();
 
-    await expect(promise).rejects.toThrow("Login cancelled");
-    expect(clearTimeoutSpy).toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(3000);
-  });
+		await expect(promise).rejects.toThrow("Login cancelled");
+		expect(clearTimeoutSpy).toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(3000);
+	});
 });
 
 describe("getAgentDir", () => {
-  test("uses PI_CODING_AGENT_DIR when set", () => {
-    vi.stubEnv("PI_CODING_AGENT_DIR", "/custom/agent");
+	test("uses PI_CODING_AGENT_DIR when set", () => {
+		vi.stubEnv("PI_CODING_AGENT_DIR", "/custom/agent");
 
-    expect(getAgentDir()).toBe("/custom/agent");
-  });
+		expect(getAgentDir()).toBe("/custom/agent");
+	});
 
-  test("falls back to the homedir agent directory", () => {
-    vi.stubEnv("PI_CODING_AGENT_DIR", "");
+	test("falls back to the homedir agent directory", () => {
+		vi.stubEnv("PI_CODING_AGENT_DIR", "");
 
-    expect(getAgentDir()).toBe(join(homedir(), ".pi", "agent"));
-  });
+		expect(getAgentDir()).toBe(join(homedir(), ".pi", "agent"));
+	});
 });
 
 describe("readStoredKiloCredentials", () => {
-  function withAuthFile(contents: string): string {
-    const directory = mkdtempSync(join(tmpdir(), "kilo-auth-test-"));
-    temporaryDirectories.push(directory);
-    writeFileSync(join(directory, "auth.json"), contents);
-    vi.stubEnv("PI_CODING_AGENT_DIR", directory);
-    return directory;
-  }
+	function withAuthFile(contents: string): string {
+		const directory = mkdtempSync(join(tmpdir(), "kilo-auth-test-"));
+		temporaryDirectories.push(directory);
+		writeFileSync(join(directory, "auth.json"), contents);
+		vi.stubEnv("PI_CODING_AGENT_DIR", directory);
+		return directory;
+	}
 
-  test("returns valid OAuth credentials", () => {
-    withAuthFile(JSON.stringify({ kilo: { type: "oauth", access: "token" } }));
+	test("returns valid OAuth credentials", () => {
+		withAuthFile(JSON.stringify({ kilo: { type: "oauth", access: "token" } }));
 
-    expect(readStoredKiloCredentials()).toEqual({ type: "oauth", access: "token" });
-  });
+		expect(readStoredKiloCredentials()).toEqual({ type: "oauth", access: "token" });
+	});
 
-  test.each([
-    ["missing file", undefined],
-    ["malformed JSON", "{"],
-    ["non-OAuth", JSON.stringify({ kilo: { type: "api_key", access: "token" } })],
-    ["missing access", JSON.stringify({ kilo: { type: "oauth" } })],
-    ["empty access", JSON.stringify({ kilo: { type: "oauth", access: "" } })],
-    ["absent kilo", JSON.stringify({ other: {} })],
-  ])("returns undefined for %s", (_name, contents) => {
-    if (contents === undefined) {
-      const directory = mkdtempSync(join(tmpdir(), "kilo-auth-test-"));
-      temporaryDirectories.push(directory);
-      vi.stubEnv("PI_CODING_AGENT_DIR", directory);
-    } else {
-      withAuthFile(contents);
-    }
+	test.each([
+		["missing file", undefined],
+		["malformed JSON", "{"],
+		["non-OAuth", JSON.stringify({ kilo: { type: "api_key", access: "token" } })],
+		["missing access", JSON.stringify({ kilo: { type: "oauth" } })],
+		["empty access", JSON.stringify({ kilo: { type: "oauth", access: "" } })],
+		["absent kilo", JSON.stringify({ other: {} })],
+	])("returns undefined for %s", (_name, contents) => {
+		if (contents === undefined) {
+			const directory = mkdtempSync(join(tmpdir(), "kilo-auth-test-"));
+			temporaryDirectories.push(directory);
+			vi.stubEnv("PI_CODING_AGENT_DIR", directory);
+		} else {
+			withAuthFile(contents);
+		}
 
-    expect(readStoredKiloCredentials()).toBeUndefined();
-  });
+		expect(readStoredKiloCredentials()).toBeUndefined();
+	});
 });
 
 describe("selectKiloOrganization", () => {
-  test("fetches the profile with the token and reports progress", async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(JSON.stringify({ organizations: [] }), { status: 200 }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    const onProgress = vi.fn();
+	test("fetches the profile with the token and reports progress", async () => {
+		const fetchMock = vi
+			.fn<typeof fetch>()
+			.mockResolvedValue(new Response(JSON.stringify({ organizations: [] }), { status: 200 }));
+		vi.stubGlobal("fetch", fetchMock);
+		const onProgress = vi.fn();
 
-    await selectKiloOrganization("access-token", { onProgress });
+		await selectKiloOrganization("access-token", { onProgress });
 
-    expect(fetchMock).toHaveBeenCalledWith(`${KILO_API_BASE}/api/profile`, {
-      headers: {
-        Authorization: "Bearer access-token",
-        "Content-Type": "application/json",
-      },
-    });
-    expect(onProgress).toHaveBeenCalledWith("Fetching Kilo profile...");
-  });
+		expect(fetchMock).toHaveBeenCalledWith(`${KILO_API_BASE}/api/profile`, {
+			headers: {
+				Authorization: "Bearer access-token",
+				"Content-Type": "application/json",
+			},
+		});
+		expect(onProgress).toHaveBeenCalledWith("Fetching Kilo profile...");
+	});
 
-  test("returns a matching environment organization without prompting", async () => {
-    vi.stubEnv("KILO_ORG_ID", "org-2");
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<typeof fetch>().mockResolvedValue(
-        new Response(JSON.stringify({ organizations: [{ id: "org-2", name: "Org 2" }] }), {
-          status: 200,
-        }),
-      ),
-    );
-    const onSelect = vi.fn();
+	test("returns a matching environment organization without prompting", async () => {
+		vi.stubEnv("KILO_ORG_ID", "org-2");
+		vi.stubGlobal(
+			"fetch",
+			vi.fn<typeof fetch>().mockResolvedValue(
+				new Response(JSON.stringify({ organizations: [{ id: "org-2", name: "Org 2" }] }), {
+					status: 200,
+				}),
+			),
+		);
+		const onSelect = vi.fn();
 
-    await expect(selectKiloOrganization("token", { onSelect })).resolves.toBe("org-2");
-    expect(onSelect).not.toHaveBeenCalled();
-  });
+		await expect(selectKiloOrganization("token", { onSelect })).resolves.toBe("org-2");
+		expect(onSelect).not.toHaveBeenCalled();
+	});
 
-  test("returns the environment fallback without onSelect or organizations", async () => {
-    vi.stubEnv("KILO_ORG_ID", "env-org");
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<typeof fetch>().mockResolvedValue(
-        new Response(JSON.stringify({ organizations: [] }), { status: 200 }),
-      ),
-    );
+	test("returns the environment fallback without onSelect or organizations", async () => {
+		vi.stubEnv("KILO_ORG_ID", "env-org");
+		vi.stubGlobal(
+			"fetch",
+			vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ organizations: [] }), { status: 200 })),
+		);
 
-    await expect(selectKiloOrganization("token", {})).resolves.toBe("env-org");
-  });
+		await expect(selectKiloOrganization("token", {})).resolves.toBe("env-org");
+	});
 
-  test("falls through to picker when environment organization is absent from profile", async () => {
-    vi.stubEnv("KILO_ORG_ID", "env-org");
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<typeof fetch>().mockResolvedValue(
-        new Response(JSON.stringify({ organizations: [{ id: "other-org", name: "Other" }] }), {
-          status: 200,
-        }),
-      ),
-    );
-    const onSelect = vi.fn().mockResolvedValue("other-org");
+	test("falls through to picker when environment organization is absent from profile", async () => {
+		vi.stubEnv("KILO_ORG_ID", "env-org");
+		vi.stubGlobal(
+			"fetch",
+			vi.fn<typeof fetch>().mockResolvedValue(
+				new Response(JSON.stringify({ organizations: [{ id: "other-org", name: "Other" }] }), {
+					status: 200,
+				}),
+			),
+		);
+		const onSelect = vi.fn().mockResolvedValue("other-org");
 
-    await expect(selectKiloOrganization("token", { onSelect })).resolves.toBe("other-org");
-    expect(onSelect).toHaveBeenCalled();
-  });
+		await expect(selectKiloOrganization("token", { onSelect })).resolves.toBe("other-org");
+		expect(onSelect).toHaveBeenCalled();
+	});
 
-  test("returns environment fallback when organization is absent and no picker exists", async () => {
-    vi.stubEnv("KILO_ORG_ID", "env-org");
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<typeof fetch>().mockResolvedValue(
-        new Response(JSON.stringify({ organizations: [{ id: "other-org", name: "Other" }] }), {
-          status: 200,
-        }),
-      ),
-    );
+	test("returns environment fallback when organization is absent and no picker exists", async () => {
+		vi.stubEnv("KILO_ORG_ID", "env-org");
+		vi.stubGlobal(
+			"fetch",
+			vi.fn<typeof fetch>().mockResolvedValue(
+				new Response(JSON.stringify({ organizations: [{ id: "other-org", name: "Other" }] }), {
+					status: 200,
+				}),
+			),
+		);
 
-    await expect(selectKiloOrganization("token", {})).resolves.toBe("env-org");
-  });
+		await expect(selectKiloOrganization("token", {})).resolves.toBe("env-org");
+	});
 
-  test("offers personal first and formats organization roles exactly", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<typeof fetch>().mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            organizations: [
-              { id: "org-1", name: "First", role: "admin" },
-              { id: "org-2", name: "Second" },
-            ],
-          }),
-          { status: 200 },
-        ),
-      ),
-    );
-    const onSelect = vi.fn().mockResolvedValue("org-2");
+	test("offers personal first and formats organization roles exactly", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn<typeof fetch>().mockResolvedValue(
+				new Response(
+					JSON.stringify({
+						organizations: [
+							{ id: "org-1", name: "First", role: "admin" },
+							{ id: "org-2", name: "Second" },
+						],
+					}),
+					{ status: 200 },
+				),
+			),
+		);
+		const onSelect = vi.fn().mockResolvedValue("org-2");
 
-    await selectKiloOrganization("token", { onSelect });
+		await selectKiloOrganization("token", { onSelect });
 
-    expect(onSelect).toHaveBeenCalledWith({
-      message: "Select Kilo account",
-      options: [
-        { id: "personal", label: "Personal Account" },
-        { id: "org-1", label: "First (admin)" },
-        { id: "org-2", label: "Second" },
-      ],
-    });
-  });
+		expect(onSelect).toHaveBeenCalledWith({
+			message: "Select Kilo account",
+			options: [
+				{ id: "personal", label: "Personal Account" },
+				{ id: "org-1", label: "First (admin)" },
+				{ id: "org-2", label: "Second" },
+			],
+		});
+	});
 
-  test.each([undefined, "personal"])("returns undefined for cancel or personal: %j", async (selected) => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<typeof fetch>().mockResolvedValue(
-        new Response(JSON.stringify({ organizations: [{ id: "org-1", name: "Org 1" }] }), {
-          status: 200,
-        }),
-      ),
-    );
-    const onSelect = vi.fn().mockResolvedValue(selected);
+	test.each([undefined, "personal"])("returns undefined for cancel or personal: %j", async (selected) => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn<typeof fetch>().mockResolvedValue(
+				new Response(JSON.stringify({ organizations: [{ id: "org-1", name: "Org 1" }] }), {
+					status: 200,
+				}),
+			),
+		);
+		const onSelect = vi.fn().mockResolvedValue(selected);
 
-    await expect(selectKiloOrganization("token", { onSelect })).resolves.toBeUndefined();
-  });
+		await expect(selectKiloOrganization("token", { onSelect })).resolves.toBeUndefined();
+	});
 
-  test("returns the selected organization ID", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<typeof fetch>().mockResolvedValue(
-        new Response(JSON.stringify({ organizations: [{ id: "org-1", name: "Org 1" }] }), {
-          status: 200,
-        }),
-      ),
-    );
+	test("returns the selected organization ID", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn<typeof fetch>().mockResolvedValue(
+				new Response(JSON.stringify({ organizations: [{ id: "org-1", name: "Org 1" }] }), {
+					status: 200,
+				}),
+			),
+		);
 
-    await expect(
-      selectKiloOrganization("token", { onSelect: vi.fn().mockResolvedValue("org-1") }),
-    ).resolves.toBe("org-1");
-  });
+		await expect(selectKiloOrganization("token", { onSelect: vi.fn().mockResolvedValue("org-1") })).resolves.toBe(
+			"org-1",
+		);
+	});
 
-  test("logs the exact warning and returns environment fallback on profile failure", async () => {
-    vi.stubEnv("KILO_ORG_ID", "env-org");
-    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockRejectedValue(new Error("network failure")));
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+	test("logs the exact warning and returns environment fallback on profile failure", async () => {
+		vi.stubEnv("KILO_ORG_ID", "env-org");
+		vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockRejectedValue(new Error("network failure")));
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
-    await expect(selectKiloOrganization("token", {})).resolves.toBe("env-org");
-    expect(warn).toHaveBeenCalledWith(
-      "[kilo] Failed to fetch profile for organization selection:",
-      "network failure",
-    );
-  });
+		await expect(selectKiloOrganization("token", {})).resolves.toBe("env-org");
+		expect(warn).toHaveBeenCalledWith(
+			"[kilo] Failed to fetch profile for organization selection:",
+			"network failure",
+		);
+	});
 });
 
 describe("organization helpers", () => {
-  test.each([
-    ["KILO_ORG_ID", "primary", "fallback", "primary"],
-    ["KILOCODE_ORGANIZATION_ID", "", "fallback", "fallback"],
-  ])("getEnvOrganizationId uses %s", (_name, kilo, kilocode, expected) => {
-    vi.stubEnv("KILO_ORG_ID", kilo);
-    vi.stubEnv("KILOCODE_ORGANIZATION_ID", kilocode);
+	test.each([
+		["KILO_ORG_ID", "primary", "fallback", "primary"],
+		["KILOCODE_ORGANIZATION_ID", "", "fallback", "fallback"],
+	])("getEnvOrganizationId uses %s", (_name, kilo, kilocode, expected) => {
+		vi.stubEnv("KILO_ORG_ID", kilo);
+		vi.stubEnv("KILOCODE_ORGANIZATION_ID", kilocode);
 
-    expect(getEnvOrganizationId()).toBe(expected);
-  });
+		expect(getEnvOrganizationId()).toBe(expected);
+	});
 
-  test("getEnvOrganizationId returns undefined when both are absent", () => {
-    const kilo = process.env.KILO_ORG_ID;
-    const kilocode = process.env.KILOCODE_ORGANIZATION_ID;
-    delete process.env.KILO_ORG_ID;
-    delete process.env.KILOCODE_ORGANIZATION_ID;
+	test("getEnvOrganizationId returns undefined when both are absent", () => {
+		const kilo = process.env.KILO_ORG_ID;
+		const kilocode = process.env.KILOCODE_ORGANIZATION_ID;
+		delete process.env.KILO_ORG_ID;
+		delete process.env.KILOCODE_ORGANIZATION_ID;
 
-    try {
-      expect(getEnvOrganizationId()).toBeUndefined();
-    } finally {
-      if (kilo === undefined) delete process.env.KILO_ORG_ID;
-      else process.env.KILO_ORG_ID = kilo;
-      if (kilocode === undefined) delete process.env.KILOCODE_ORGANIZATION_ID;
-      else process.env.KILOCODE_ORGANIZATION_ID = kilocode;
-    }
-  });
+		try {
+			expect(getEnvOrganizationId()).toBeUndefined();
+		} finally {
+			if (kilo === undefined) delete process.env.KILO_ORG_ID;
+			else process.env.KILO_ORG_ID = kilo;
+			if (kilocode === undefined) delete process.env.KILOCODE_ORGANIZATION_ID;
+			else process.env.KILOCODE_ORGANIZATION_ID = kilocode;
+		}
+	});
 
-  test("returns a nonempty account ID untrimmed", () => {
-    expect(getCredentialOrganizationId({ accountId: "  organization-id  " } as never)).toBe(
-      "  organization-id  ",
-    );
-  });
+	test("returns a nonempty account ID untrimmed", () => {
+		expect(getCredentialOrganizationId({ accountId: "  organization-id  " } as never)).toBe("  organization-id  ");
+	});
 
-  test.each([undefined, "   "])("returns undefined for missing or whitespace account ID: %j", (accountId) => {
-    expect(getCredentialOrganizationId({ accountId } as never)).toBeUndefined();
-  });
+	test.each([undefined, "   "])("returns undefined for missing or whitespace account ID: %j", (accountId) => {
+		expect(getCredentialOrganizationId({ accountId } as never)).toBeUndefined();
+	});
 
-  test("prefers credential organization over environment", () => {
-    vi.stubEnv("KILO_ORG_ID", "env-id");
+	test("prefers credential organization over environment", () => {
+		vi.stubEnv("KILO_ORG_ID", "env-id");
 
-    expect(getEffectiveOrganizationId({ accountId: "credential-id" } as never)).toBe("credential-id");
-  });
+		expect(getEffectiveOrganizationId({ accountId: "credential-id" } as never)).toBe("credential-id");
+	});
 
-  test("falls back to environment organization", () => {
-    vi.stubEnv("KILO_ORG_ID", "env-id");
+	test("falls back to environment organization", () => {
+		vi.stubEnv("KILO_ORG_ID", "env-id");
 
-    expect(getEffectiveOrganizationId()).toBe("env-id");
-  });
+		expect(getEffectiveOrganizationId()).toBe("env-id");
+	});
 
-  test("returns undefined when credential and environment organizations are absent", () => {
-    const kilo = process.env.KILO_ORG_ID;
-    const kilocode = process.env.KILOCODE_ORGANIZATION_ID;
-    delete process.env.KILO_ORG_ID;
-    delete process.env.KILOCODE_ORGANIZATION_ID;
+	test("returns undefined when credential and environment organizations are absent", () => {
+		const kilo = process.env.KILO_ORG_ID;
+		const kilocode = process.env.KILOCODE_ORGANIZATION_ID;
+		delete process.env.KILO_ORG_ID;
+		delete process.env.KILOCODE_ORGANIZATION_ID;
 
-    try {
-      expect(getEffectiveOrganizationId()).toBeUndefined();
-    } finally {
-      if (kilo === undefined) delete process.env.KILO_ORG_ID;
-      else process.env.KILO_ORG_ID = kilo;
-      if (kilocode === undefined) delete process.env.KILOCODE_ORGANIZATION_ID;
-      else process.env.KILOCODE_ORGANIZATION_ID = kilocode;
-    }
-  });
+		try {
+			expect(getEffectiveOrganizationId()).toBeUndefined();
+		} finally {
+			if (kilo === undefined) delete process.env.KILO_ORG_ID;
+			else process.env.KILO_ORG_ID = kilo;
+			if (kilocode === undefined) delete process.env.KILOCODE_ORGANIZATION_ID;
+			else process.env.KILOCODE_ORGANIZATION_ID = kilocode;
+		}
+	});
 });
