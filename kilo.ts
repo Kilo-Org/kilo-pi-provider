@@ -255,13 +255,13 @@ export default async function (pi: ExtensionAPI) {
 	pi.on("model_select", async (event, ctx) => {
 		if (event.model?.provider !== "kilo") return;
 
-		const cred = readStoredKiloCredentials();
-		if (cred?.type !== "oauth") return;
+		const access = getKiloAccess();
+		if (!access) return;
 
 		if (!ctx.hasUI) return;
 
 		try {
-			const balance = await fetchKiloBalance(cred.access, getEffectiveOrganizationId(cred));
+			const balance = await fetchKiloBalance(access.token, access.organizationId);
 			if (balance !== null) {
 				const theme = ctx.ui.theme;
 				ctx.ui.setStatus("kilo-credits", theme.fg("accent", `💰 ${formatCredits(balance)}`));
@@ -276,13 +276,13 @@ export default async function (pi: ExtensionAPI) {
 
 	// Refresh credits after each turn
 	pi.on("turn_end", async (_event, ctx) => {
-		const cred = readStoredKiloCredentials();
-		if (cred?.type !== "oauth") return;
+		const access = getKiloAccess();
+		if (!access) return;
 
 		if (!ctx.hasUI) return;
 
 		try {
-			const balance = await fetchKiloBalance(cred.access, getEffectiveOrganizationId(cred));
+			const balance = await fetchKiloBalance(access.token, access.organizationId);
 			if (balance !== null) {
 				const theme = ctx.ui.theme;
 				ctx.ui.setStatus("kilo-credits", theme.fg("accent", `💰 ${formatCredits(balance)}`));

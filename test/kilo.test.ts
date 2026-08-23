@@ -360,6 +360,97 @@ test("session_start prefers OAuth credentials and account organization over API-
 	]);
 });
 
+test("model_select refreshes credits for API-key-only Kilo access", async () => {
+	isolateAuth();
+	vi.stubEnv("KILO_API_KEY", "api-key");
+	vi.stubEnv("KILO_ORG_ID", "org-id");
+	const fetchMock = vi
+		.fn<typeof fetch>()
+		.mockResolvedValueOnce(catalogResponse())
+		.mockResolvedValueOnce(new Response(JSON.stringify({ balance: 12.34 }), { status: 200 }));
+	vi.stubGlobal("fetch", fetchMock);
+	const on = vi.fn();
+	const setStatus = vi.fn();
+
+	await kiloExtension({ registerProvider: vi.fn(), on } as never);
+	const handler = on.mock.calls.find(([event]) => event === "model_select")?.[1] as never;
+	await handler(
+		{ model: { provider: "kilo" } },
+		{
+			hasUI: true,
+			ui: { setStatus, theme: { fg: vi.fn((_tone, text) => text) } },
+		},
+	);
+
+	expect(fetchMock.mock.calls[1]).toEqual([
+		"https://api.kilo.ai/api/profile/balance",
+		expect.objectContaining({
+			headers: {
+				Authorization: "Bearer api-key",
+				"Content-Type": "application/json",
+				"X-KiloCode-OrganizationId": "org-id",
+			},
+		}),
+	]);
+	expect(setStatus).toHaveBeenCalledWith("kilo-credits", "💰 $12.34");
+});
+
+test("model_select for another provider does not fetch balance", async () => {
+	isolateAuth();
+	vi.stubEnv("KILO_API_KEY", "api-key");
+	const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(catalogResponse());
+	vi.stubGlobal("fetch", fetchMock);
+	const on = vi.fn();
+	const setStatus = vi.fn();
+
+	await kiloExtension({ registerProvider: vi.fn(), on } as never);
+	const handler = on.mock.calls.find(([event]) => event === "model_select")?.[1] as never;
+	await handler({ model: { provider: "other" } }, { hasUI: true, ui: { setStatus } });
+
+	expect(fetchMock).toHaveBeenCalledOnce();
+	expect(setStatus).not.toHaveBeenCalled();
+});
+
+test("turn_end refreshes credits for API-key-only access", async () => {
+	isolateAuth();
+	vi.stubEnv("KILO_API_KEY", "api-key");
+	const fetchMock = vi
+		.fn<typeof fetch>()
+		.mockResolvedValueOnce(catalogResponse())
+		.mockResolvedValueOnce(new Response(JSON.stringify({ balance: 12.34 }), { status: 200 }));
+	vi.stubGlobal("fetch", fetchMock);
+	const on = vi.fn();
+	const setStatus = vi.fn();
+
+	await kiloExtension({ registerProvider: vi.fn(), on } as never);
+	const handler = on.mock.calls.find(([event]) => event === "turn_end")?.[1] as never;
+	await handler({}, { hasUI: true, ui: { setStatus, theme: { fg: vi.fn((_tone, text) => text) } } });
+
+	expect(fetchMock.mock.calls[1]?.[0]).toBe("https://api.kilo.ai/api/profile/balance");
+	expect(setStatus).toHaveBeenCalledWith("kilo-credits", "💰 $12.34");
+});
+
+test("credit event guards skip missing access and missing UI", async () => {
+	isolateAuth();
+	const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(catalogResponse());
+	vi.stubGlobal("fetch", fetchMock);
+	const on = vi.fn();
+	const setStatus = vi.fn();
+
+	await kiloExtension({ registerProvider: vi.fn(), on } as never);
+	const modelHandler = on.mock.calls.find(([event]) => event === "model_select")?.[1] as never;
+	await modelHandler({ model: { provider: "kilo" } }, { hasUI: true, ui: { setStatus } });
+	expect(fetchMock).toHaveBeenCalledOnce();
+	expect(setStatus).not.toHaveBeenCalled();
+
+	isolateAuth();
+	vi.stubEnv("KILO_API_KEY", "api-key");
+	const turnHandler = on.mock.calls.find(([event]) => event === "turn_end")?.[1] as never;
+	await turnHandler({}, { hasUI: false, ui: { setStatus } });
+	expect(fetchMock).toHaveBeenCalledOnce();
+	expect(setStatus).not.toHaveBeenCalled();
+});
+
 test("session_start clears credits and makes no authenticated request without auth", async () => {
 	isolateAuth();
 	const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(catalogResponse());
