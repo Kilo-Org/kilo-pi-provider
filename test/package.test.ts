@@ -33,3 +33,14 @@ test("installs a Prek hook that runs the Biome check", () => {
 	expect(prekConfig).toContain('entry = "npm run check"');
 	expect(prekConfig).toContain("pass_filenames = false");
 });
+
+test("provides upstream-style V8 coverage reporting for source modules", () => {
+	expect(packageJson.scripts["test:coverage"]).toBe("vitest run --coverage");
+	expect(packageJson.devDependencies["@vitest/coverage-v8"]).toBe("4.1.9");
+
+	const vitestConfig = readFileSync(resolve(repositoryRoot, "vitest.config.ts"), "utf8");
+	expect(vitestConfig).toContain('provider: "v8"');
+	expect(vitestConfig).toContain("all: true");
+	expect(vitestConfig).toContain('include: ["src/**/*.ts"]');
+	expect(vitestConfig).toContain('reporter: ["text", "html", "lcov"]');
+});

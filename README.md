@@ -68,7 +68,10 @@ Run the checks and tests directly with:
 ```bash
 npm run check
 npm test
+npm run test:coverage
 ```
+
+`test:coverage` reports V8 coverage for `src/` and writes HTML and LCOV reports to `coverage/`.
 
 To run the pre-commit hook against every tracked file:
 
