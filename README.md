@@ -61,7 +61,13 @@ Install dependencies:
 npm ci
 ```
 
-This installs [Prek](https://github.com/j178/prek)'s pre-commit hook. Before each commit it runs Biome, which applies safe formatting and lint fixes. If it changes files, review and stage those changes before committing again.
+Install [Prek](https://github.com/j178/prek)'s pre-commit hook locally:
+
+```bash
+npx prek install
+```
+
+Before each commit it runs Biome, which applies safe formatting and lint fixes. If it changes files, review and stage those changes before committing again. The hook is not installed automatically so Pi package installation, which omits development dependencies, succeeds.
 
 Run the checks and tests directly with:
 
