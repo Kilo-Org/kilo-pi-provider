@@ -25,8 +25,8 @@ test("provides the upstream Pi Biome check", () => {
 	});
 });
 
-test("installs a Prek hook that runs the Biome check", () => {
-	expect(packageJson.scripts.prepare).toBe("prek install");
+test("provides a Prek hook without running it during package installation", () => {
+	expect(packageJson.scripts.prepare).toBeUndefined();
 	expect(packageJson.devDependencies["@j178/prek"]).toBe("0.4.14");
 
 	const prekConfig = readFileSync(resolve(repositoryRoot, "prek.toml"), "utf8");

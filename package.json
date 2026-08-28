@@ -7,8 +7,7 @@
   "scripts": {
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "check": "biome check --write --error-on-warnings .",
-    "prepare": "prek install"
+    "check": "biome check --write --error-on-warnings ."
   },
   "pi": {
     "extensions": ["./src/index.ts"]
