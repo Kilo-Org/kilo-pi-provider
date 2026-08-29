@@ -16,7 +16,13 @@ export { parsePrice };
 
 import type { ExtensionAPI, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { fetchKiloBalance, KILO_API_BASE, KILO_ORG_HEADER, withOrganizationHeader } from "./api.ts";
+import {
+	fetchKiloBalance,
+	fetchKiloUsageEntries,
+	KILO_API_BASE,
+	KILO_ORG_HEADER,
+	withOrganizationHeader,
+} from "./api.ts";
 import {
 	getEffectiveOrganizationId,
 	getEnvOrganizationId,
@@ -24,6 +30,7 @@ import {
 	loginKilo,
 	refreshKiloToken,
 } from "./auth.ts";
+import { createUsageRefresher, getRequestedUsagePeriods } from "./usage.ts";
 
 // =============================================================================
 // Constants
@@ -126,6 +133,7 @@ export default async function (pi: ExtensionAPI) {
 	// --list-models, --model selection, and print mode before session_start fires.
 	let freeModels: ProviderModelConfig[] = [];
 	let cachedAllModels: ProviderModelConfig[] = [];
+	const usageRefresher = createUsageRefresher({ fetchUsageEntries: fetchKiloUsageEntries });
 	try {
 		if (startupAccess) {
 			cachedAllModels = await fetchKiloModels({
@@ -208,11 +216,25 @@ export default async function (pi: ExtensionAPI) {
 	// modifyModels has data to work with. Also fetch and display credits.
 	pi.on("session_start", async (_event, ctx) => {
 		const access = getKiloAccess();
+		const usageEnabled = getRequestedUsagePeriods().length > 0;
 
-		// Clear credits if not logged in
+		// Clear credits and enabled usage if not logged in.
 		if (!access) {
 			ctx.ui.setStatus("kilo-credits", undefined);
+			if (usageEnabled) {
+				usageRefresher.clear({
+					setStatus: (key, value) => ctx.ui.setStatus(key, value),
+					accent: (text) => text,
+				});
+			}
 			return;
+		}
+
+		if (ctx.hasUI && usageEnabled) {
+			usageRefresher.refresh(access, {
+				setStatus: (key, value) => ctx.ui.setStatus(key, value),
+				accent: (text) => ctx.ui.theme.fg("accent", text),
+			});
 		}
 
 		try {
@@ -273,12 +295,26 @@ export default async function (pi: ExtensionAPI) {
 		}
 	});
 
-	// Refresh credits after each turn
+	// Refresh credits and opt-in usage after each turn.
 	pi.on("turn_end", async (_event, ctx) => {
 		const access = getKiloAccess();
-		if (!access) return;
+		const usageEnabled = getRequestedUsagePeriods().length > 0;
+		if (!access || !ctx.hasUI) {
+			if (usageEnabled) {
+				usageRefresher.clear({
+					setStatus: (key, value) => ctx.ui.setStatus(key, value),
+					accent: (text) => text,
+				});
+			}
+			return;
+		}
 
-		if (!ctx.hasUI) return;
+		if (usageEnabled) {
+			usageRefresher.refresh(access, {
+				setStatus: (key, value) => ctx.ui.setStatus(key, value),
+				accent: (text) => ctx.ui.theme.fg("accent", text),
+			});
+		}
 
 		try {
 			const balance = await fetchKiloBalance(access.token, access.organizationId);
@@ -405,8 +441,13 @@ export default async function (pi: ExtensionAPI) {
 						statsParts.push(contextPercentStr);
 
 						// Inject credits inline on the main stats line
-						const creditsStatus = footerData.getExtensionStatuses().get("kilo-credits");
+						const extensionStatuses = footerData.getExtensionStatuses();
+						const creditsStatus = extensionStatuses.get("kilo-credits");
 						if (creditsStatus) statsParts.push(creditsStatus);
+						for (const period of ["day", "week", "month", "year"]) {
+							const usageStatus = extensionStatuses.get(`kilo-usage-${period}`);
+							if (usageStatus) statsParts.push(usageStatus);
+						}
 
 						let statsLeft = statsParts.join(" ");
 						let statsLeftWidth = visibleWidth(statsLeft);

@@ -51,6 +51,14 @@ KILO_CUSTOM_FOOTER=0 pi
 
 Kilo credits remain available as the `kilo-credits` footer status.
 
+To show today's Kilo spend, opt in to usage status reporting:
+
+```bash
+KILO_USAGE=1 pi
+```
+
+`KILO_USAGE` also accepts `true`, `yes`, or `day`. Daily usage refreshes at session start and after completed turns.
+
 ## Development
 
 Source modules are under `src/`; `src/index.ts` is the Pi extension entry point.

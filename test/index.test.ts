@@ -33,6 +33,14 @@ function setAuth(auth: object): void {
 	writeFileSync(join(agentDirectory, "auth.json"), JSON.stringify(auth));
 }
 
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((done) => {
+		resolve = done;
+	});
+	return { promise, resolve };
+}
+
 const catalogResponse = () =>
 	new Response(
 		JSON.stringify({
@@ -218,7 +226,14 @@ function handler(on: ReturnType<typeof vi.fn>, event: string): ExtensionHandler 
 }
 
 function createRuntime(
-	options: { auth?: object; apiKey?: string; organizationId?: string; balance?: number; usage?: unknown } = {},
+	options: {
+		auth?: object;
+		apiKey?: string;
+		organizationId?: string;
+		balance?: number;
+		usage?: unknown;
+		usageResponse?: Promise<Response>;
+	} = {},
 ) {
 	if (options.auth) setAuth(options.auth);
 	vi.stubEnv("KILO_API_KEY", options.apiKey ?? "");
@@ -229,7 +244,7 @@ function createRuntime(
 			return new Response(JSON.stringify({ balance: options.balance ?? 12.34 }), { status: 200 });
 		}
 		if (url.includes("/usage?")) {
-			return new Response(JSON.stringify(options.usage ?? { usage: [] }), { status: 200 });
+			return options.usageResponse ?? new Response(JSON.stringify(options.usage ?? { usage: [] }), { status: 200 });
 		}
 		return catalogResponse();
 	});
@@ -392,6 +407,26 @@ test("turn_end schedules an enabled daily usage refresh", async () => {
 
 	await vi.waitFor(() => {
 		expect(runtime.setStatus).toHaveBeenCalledWith("kilo-usage-day", "💸 $2.00 today");
+	});
+});
+
+test("turn_end does not wait for an enabled usage response", async () => {
+	vi.stubEnv("KILO_USAGE", "day");
+	const usageResponse = deferred<Response>();
+	const runtime = createRuntime({ apiKey: "api-key", usageResponse: usageResponse.promise });
+
+	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await expect(handler(runtime.on, "turn_end")({}, runtime.context)).resolves.toBeUndefined();
+	expect(runtime.fetchMock.mock.calls.some(([url]) => String(url).includes("/usage?"))).toBe(true);
+
+	usageResponse.resolve(
+		new Response(
+			JSON.stringify({ usage: [{ date: new Date().toISOString().slice(0, 10), total_cost: 3_000_000 }] }),
+			{ status: 200 },
+		),
+	);
+	await vi.waitFor(() => {
+		expect(runtime.setStatus).toHaveBeenCalledWith("kilo-usage-day", "💸 $3.00 today");
 	});
 });
 
