@@ -45,6 +45,12 @@ export function usesCustomFooter(): boolean {
 	return !["0", "false", "no"].includes(value ?? "");
 }
 
+/** Whether to fetch and display the Kilo credit balance in the footer. */
+export function showsCredits(): boolean {
+	const value = process.env.KILO_SHOW_CREDITS?.trim().toLowerCase();
+	return !["0", "false", "no"].includes(value ?? "");
+}
+
 function formatCredits(balance: number): string {
 	if (balance >= 1000) {
 		return `$${(balance / 1000).toFixed(1)}k`;
@@ -128,6 +134,8 @@ function makeProviderConfig(organizationId?: string) {
 
 export default async function (pi: ExtensionAPI) {
 	const startupAccess = getKiloAccess();
+	// Environment configuration is read once at extension startup.
+	const creditsEnabled = showsCredits();
 
 	// Fetch models at load time so the provider is immediately usable for
 	// --list-models, --model selection, and print mode before session_start fires.
@@ -218,9 +226,9 @@ export default async function (pi: ExtensionAPI) {
 		const access = getKiloAccess();
 		const usageEnabled = getRequestedUsagePeriods().length > 0;
 
-		// Clear credits if not logged in.
+		// Clear a stale credit status after logout when an interactive UI is available.
 		if (!access) {
-			ctx.ui.setStatus("kilo-credits", undefined);
+			if (ctx.hasUI) ctx.ui.setStatus("kilo-credits", undefined);
 			return;
 		}
 
@@ -252,8 +260,8 @@ export default async function (pi: ExtensionAPI) {
 			});
 		}
 
-		// Fetch and display credits balance when an interactive UI is available.
-		if (ctx.hasUI) {
+		// Fetch and display credits balance when enabled and an interactive UI is available.
+		if (ctx.hasUI && creditsEnabled) {
 			try {
 				const balance = await fetchKiloBalance(access.token, access.organizationId);
 				if (balance !== null) {
@@ -273,7 +281,7 @@ export default async function (pi: ExtensionAPI) {
 		const access = getKiloAccess();
 		if (!access) return;
 
-		if (!ctx.hasUI) return;
+		if (!ctx.hasUI || !creditsEnabled) return;
 
 		try {
 			const balance = await fetchKiloBalance(access.token, access.organizationId);
@@ -301,6 +309,8 @@ export default async function (pi: ExtensionAPI) {
 				accent: (text) => ctx.ui.theme.fg("accent", text),
 			});
 		}
+
+		if (!creditsEnabled) return;
 
 		try {
 			const balance = await fetchKiloBalance(access.token, access.organizationId);
@@ -426,10 +436,10 @@ export default async function (pi: ExtensionAPI) {
 						}
 						statsParts.push(contextPercentStr);
 
-						// Inject credits inline on the main stats line
+						// Inject enabled Kilo statuses inline on the main stats line
 						const extensionStatuses = footerData.getExtensionStatuses();
 						const creditsStatus = extensionStatuses.get("kilo-credits");
-						if (creditsStatus) statsParts.push(creditsStatus);
+						if (creditsEnabled && creditsStatus) statsParts.push(creditsStatus);
 						for (const period of ["day", "week", "month", "year"]) {
 							const usageStatus = extensionStatuses.get(`kilo-usage-${period}`);
 							if (usageStatus) statsParts.push(usageStatus);
