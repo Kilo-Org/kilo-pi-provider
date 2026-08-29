@@ -23,6 +23,54 @@ test.each([
 type FooterModel = NonNullable<FooterContext["model"]>;
 type FooterEntries = ReturnType<FooterContext["sessionManager"]["getEntries"]>;
 type FooterContextUsage = ReturnType<FooterContext["getContextUsage"]>;
+type FixtureModel = {
+	id: string;
+	provider: string;
+	contextWindow: number;
+	reasoning?: boolean;
+};
+type FixtureUsage = {
+	input: number;
+	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+	cost: { total: number };
+};
+type FixtureEntry =
+	| { type: "message"; message: { role: "assistant"; usage: FixtureUsage } }
+	| { type: "message"; message: { role: "user" } };
+type FixtureContextUsage = { contextWindow: number; percent: number | null };
+type FooterFixtureOptions = {
+	model?: FixtureModel | null;
+	entries?: FixtureEntry[];
+	contextUsage?: FixtureContextUsage | null;
+	sessionName?: string;
+	branch?: string;
+	statuses?: Map<string, string>;
+	providerCount?: number;
+	thinkingLevel?: ReturnType<FooterExtensionAPI["getThinkingLevel"]> | null;
+	usingOAuth?: boolean;
+	creditsEnabled?: boolean;
+};
+
+function adaptFixtureModel(model: FixtureModel | null | undefined): FooterModel | undefined {
+	return (model ?? undefined) as FooterModel | undefined;
+}
+
+function adaptFixtureEntries(entries: FixtureEntry[]): FooterEntries {
+	return entries as FooterEntries;
+}
+
+function adaptFixtureContextUsage(contextUsage: FixtureContextUsage | null | undefined): FooterContextUsage {
+	return (contextUsage ?? undefined) as FooterContextUsage;
+}
+
+function createLegacyThinkingLevelApi(
+	thinkingLevel: ReturnType<FooterExtensionAPI["getThinkingLevel"]> | null | undefined,
+): FooterExtensionAPI {
+	// Pi now guarantees ThinkingLevel, but the pre-existing renderer retains its nullish fallback.
+	return { getThinkingLevel: (() => thinkingLevel) as FooterExtensionAPI["getThinkingLevel"] };
+}
 
 function createFooter({
 	model = { id: "kilo-model", provider: "kilo", contextWindow: 100_000 },
@@ -35,25 +83,14 @@ function createFooter({
 	thinkingLevel = "off",
 	usingOAuth = false,
 	creditsEnabled = true,
-}: {
-	model?: object | null | undefined;
-	entries?: object[];
-	contextUsage?: object | null | undefined;
-	sessionName?: string;
-	branch?: string;
-	statuses?: Map<string, string>;
-	providerCount?: number;
-	thinkingLevel?: ReturnType<FooterExtensionAPI["getThinkingLevel"]> | null;
-	usingOAuth?: boolean;
-	creditsEnabled?: boolean;
-} = {}) {
+}: FooterFixtureOptions = {}) {
 	const setFooter = vi.fn();
 	const requestRender = vi.fn();
 	const unsubscribe = vi.fn();
 	const theme = { fg: vi.fn((_tone: string, text: string) => text) };
-	const footerModel = (model ?? undefined) as FooterModel | undefined;
-	const sessionEntries = entries as FooterEntries;
-	const footerContextUsage = (contextUsage ?? undefined) as FooterContextUsage;
+	const footerModel = adaptFixtureModel(model);
+	const sessionEntries = adaptFixtureEntries(entries);
+	const footerContextUsage = adaptFixtureContextUsage(contextUsage);
 	const context = {
 		model: footerModel,
 		ui: { setFooter },
@@ -61,10 +98,7 @@ function createFooter({
 		getContextUsage: () => footerContextUsage,
 		modelRegistry: { isUsingOAuth: () => usingOAuth },
 	} satisfies FooterContext;
-	// Exercise the legacy fallback even though Pi's current type is always a ThinkingLevel.
-	const pi = {
-		getThinkingLevel: (() => thinkingLevel) as FooterExtensionAPI["getThinkingLevel"],
-	} satisfies FooterExtensionAPI;
+	const pi = createLegacyThinkingLevelApi(thinkingLevel);
 
 	installCustomFooter(pi, context, creditsEnabled);
 	const footer = setFooter.mock.calls[0]?.[0]({ requestRender }, theme, {
@@ -165,9 +199,10 @@ test("omits disabled credits and handles a missing model and context usage", () 
 });
 
 test.each<[ReturnType<FooterExtensionAPI["getThinkingLevel"]> | null]>([["off"], [null]])(
-	"labels %s thinking level as off",
+	"labels %s thinking level as off, including the legacy null fallback",
 	(thinkingLevel) => {
 		const { footer } = createFooter({
+			// Null is intentionally passed through the legacy API adapter to cover the preserved fallback.
 			model: { id: "reasoning-model", provider: "kilo", contextWindow: 1000, reasoning: true },
 			thinkingLevel,
 		});
