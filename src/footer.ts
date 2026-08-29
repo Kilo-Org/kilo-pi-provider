@@ -2,10 +2,13 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { visibleWidth } from "@earendil-works/pi-tui";
 
 /** The Pi extension surface consumed by the custom footer. */
-export type FooterContext = Pick<
-	ExtensionContext,
-	"model" | "ui" | "sessionManager" | "getContextUsage" | "modelRegistry"
->;
+export type FooterContext = {
+	model: ExtensionContext["model"];
+	ui: Pick<ExtensionContext["ui"], "setFooter">;
+	sessionManager: Pick<ExtensionContext["sessionManager"], "getEntries" | "getSessionName">;
+	getContextUsage: ExtensionContext["getContextUsage"];
+	modelRegistry: Pick<ExtensionContext["modelRegistry"], "isUsingOAuth">;
+};
 export type FooterExtensionAPI = Pick<ExtensionAPI, "getThinkingLevel">;
 
 export function usesCustomFooter(): boolean {

@@ -20,6 +20,10 @@ test.each([
 	expect(usesCustomFooter()).toBe(expected);
 });
 
+type FooterModel = NonNullable<FooterContext["model"]>;
+type FooterEntries = ReturnType<FooterContext["sessionManager"]["getEntries"]>;
+type FooterContextUsage = ReturnType<FooterContext["getContextUsage"]>;
+
 function createFooter({
 	model = { id: "kilo-model", provider: "kilo", contextWindow: 100_000 },
 	entries = [],
@@ -47,18 +51,22 @@ function createFooter({
 	const requestRender = vi.fn();
 	const unsubscribe = vi.fn();
 	const theme = { fg: vi.fn((_tone: string, text: string) => text) };
+	const footerModel = (model ?? undefined) as FooterModel | undefined;
+	const sessionEntries = entries as FooterEntries;
+	const footerContextUsage = (contextUsage ?? undefined) as FooterContextUsage;
 	const context = {
-		model: model ?? undefined,
+		model: footerModel,
 		ui: { setFooter },
-		sessionManager: { getEntries: () => entries, getSessionName: () => sessionName },
-		getContextUsage: () => contextUsage ?? undefined,
+		sessionManager: { getEntries: () => sessionEntries, getSessionName: () => sessionName },
+		getContextUsage: () => footerContextUsage,
 		modelRegistry: { isUsingOAuth: () => usingOAuth },
-	};
+	} satisfies FooterContext;
 	// Exercise the legacy fallback even though Pi's current type is always a ThinkingLevel.
-	const pi = { getThinkingLevel: () => thinkingLevel } as FooterExtensionAPI;
+	const pi = {
+		getThinkingLevel: (() => thinkingLevel) as FooterExtensionAPI["getThinkingLevel"],
+	} satisfies FooterExtensionAPI;
 
-	// This fixture intentionally supplies only the footer's consumed Pi context members.
-	installCustomFooter(pi, context as unknown as FooterContext, creditsEnabled);
+	installCustomFooter(pi, context, creditsEnabled);
 	const footer = setFooter.mock.calls[0]?.[0]({ requestRender }, theme, {
 		onBranchChange: (listener: () => void) => {
 			listener();
@@ -156,13 +164,16 @@ test("omits disabled credits and handles a missing model and context usage", () 
 	expect(stats).not.toContain("💰 hidden");
 });
 
-test.each(["off", null])("labels %s thinking level as off", (thinkingLevel) => {
-	const { footer } = createFooter({
-		model: { id: "reasoning-model", provider: "kilo", contextWindow: 1000, reasoning: true },
-		thinkingLevel,
-	});
-	expect(footer.render(200)[1]).toContain("reasoning-model • thinking off");
-});
+test.each<[ReturnType<FooterExtensionAPI["getThinkingLevel"]> | null]>([["off"], [null]])(
+	"labels %s thinking level as off",
+	(thinkingLevel) => {
+		const { footer } = createFooter({
+			model: { id: "reasoning-model", provider: "kilo", contextWindow: 1000, reasoning: true },
+			thinkingLevel,
+		});
+		expect(footer.render(200)[1]).toContain("reasoning-model • thinking off");
+	},
+);
 
 test("truncates path, stats, provider, and model output at narrow widths", () => {
 	const { footer } = createFooter({
