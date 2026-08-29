@@ -107,9 +107,14 @@ Run the checks and tests directly with:
 
 ```bash
 npm run check
+npm run typecheck
 npm test
 npm run test:coverage
 ```
+
+`typecheck` runs TypeScript in strict, no-emit mode against source, tests, and TypeScript configuration. It checks the extension against the pinned Pi API types and is intentionally not part of CI or the pre-commit hook.
+
+When changing TypeScript, run `npm run typecheck` and resolve every type error in the files you touch. Fix the underlying types or implementation; do not silence errors with `any`, unsafe casts, `@ts-ignore`, or weaker compiler settings.
 
 `test:coverage` reports V8 coverage for `src/` and writes HTML and LCOV reports to `coverage/`.
 

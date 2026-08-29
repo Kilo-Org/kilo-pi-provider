@@ -1,0 +1,12 @@
+{
+	"compilerOptions": {
+		"module": "NodeNext",
+		"noEmit": true,
+		"allowImportingTsExtensions": true,
+		"strict": true,
+		"noUncheckedIndexedAccess": true,
+		"skipLibCheck": true,
+		"types": ["node"]
+	},
+	"include": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"]
+}
