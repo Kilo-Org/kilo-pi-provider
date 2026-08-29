@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import kiloExtension, { parsePrice, showsCredits, usesCustomFooter } from "../src/index.ts";
+import kiloExtension, { parsePrice, showsCredits } from "../src/index.ts";
 
 const temporaryDirectories: string[] = [];
 let agentDirectory: string;
@@ -62,25 +62,6 @@ const catalogResponse = () =>
 		}),
 		{ status: 200, headers: { "Content-Type": "application/json" } },
 	);
-
-test.each([
-	[undefined, true],
-	["1", true],
-	["true", true],
-	["unexpected", true],
-	["0", false],
-	["false", false],
-	["FALSE", false],
-	[" no ", false],
-])("usesCustomFooter returns %s for KILO_CUSTOM_FOOTER=%s", (value, expected) => {
-	if (value === undefined) {
-		vi.stubEnv("KILO_CUSTOM_FOOTER", "");
-	} else {
-		vi.stubEnv("KILO_CUSTOM_FOOTER", value);
-	}
-
-	expect(usesCustomFooter()).toBe(expected);
-});
 
 test.each([
 	[undefined, true],

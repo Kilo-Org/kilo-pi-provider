@@ -30,6 +30,7 @@ import {
 	loginKilo,
 	refreshKiloToken,
 } from "./auth.ts";
+import { usesCustomFooter } from "./footer.ts";
 import { createUsageRefresher, getRequestedUsagePeriods } from "./usage.ts";
 
 // =============================================================================
@@ -39,11 +40,6 @@ import { createUsageRefresher, getRequestedUsagePeriods } from "./usage.ts";
 const KILO_GATEWAY_BASE = `${KILO_API_BASE}/api/gateway`;
 const MODELS_FETCH_TIMEOUT_MS = 10_000;
 const KILO_TOS_URL = "https://kilo.ai/terms";
-
-export function usesCustomFooter(): boolean {
-	const value = process.env.KILO_CUSTOM_FOOTER?.trim().toLowerCase();
-	return !["0", "false", "no"].includes(value ?? "");
-}
 
 /** Whether to fetch and display the Kilo credit balance in the footer. */
 export function showsCredits(): boolean {
