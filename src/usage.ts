@@ -53,12 +53,6 @@ function getUsageStatusKey(period: KiloUsageDisplayPeriod): string {
 	return `${USAGE_STATUS_PREFIX}${period}`;
 }
 
-function clearUsageStatuses(presentation: UsageStatusPresentation): void {
-	for (const period of ["day", "week", "month", "year"] as const) {
-		presentation.setStatus(getUsageStatusKey(period), undefined);
-	}
-}
-
 export function createUsageRefresher(options: UsageRefresherOptions) {
 	const now = options.now ?? (() => new Date());
 	let running = false;
@@ -93,12 +87,7 @@ export function createUsageRefresher(options: UsageRefresherOptions) {
 	return {
 		refresh(access: KiloAccess, presentation: UsageStatusPresentation): void {
 			const periods = getRequestedUsagePeriods();
-			if (periods.length === 0) {
-				revision += 1;
-				queued = undefined;
-				clearUsageStatuses(presentation);
-				return;
-			}
+			if (periods.length === 0) return;
 
 			revision += 1;
 			const request = { access, periods, presentation, revision };
@@ -109,11 +98,6 @@ export function createUsageRefresher(options: UsageRefresherOptions) {
 
 			running = true;
 			void run(request);
-		},
-		clear(presentation: UsageStatusPresentation): void {
-			revision += 1;
-			queued = undefined;
-			clearUsageStatuses(presentation);
 		},
 	};
 }

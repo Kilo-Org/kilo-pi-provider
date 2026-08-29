@@ -218,15 +218,9 @@ export default async function (pi: ExtensionAPI) {
 		const access = getKiloAccess();
 		const usageEnabled = getRequestedUsagePeriods().length > 0;
 
-		// Clear credits and enabled usage if not logged in.
+		// Clear credits if not logged in.
 		if (!access) {
 			ctx.ui.setStatus("kilo-credits", undefined);
-			if (usageEnabled) {
-				usageRefresher.clear({
-					setStatus: (key, value) => ctx.ui.setStatus(key, value),
-					accent: (text) => text,
-				});
-			}
 			return;
 		}
 
@@ -299,15 +293,7 @@ export default async function (pi: ExtensionAPI) {
 	pi.on("turn_end", async (_event, ctx) => {
 		const access = getKiloAccess();
 		const usageEnabled = getRequestedUsagePeriods().length > 0;
-		if (!access || !ctx.hasUI) {
-			if (usageEnabled) {
-				usageRefresher.clear({
-					setStatus: (key, value) => ctx.ui.setStatus(key, value),
-					accent: (text) => text,
-				});
-			}
-			return;
-		}
+		if (!access || !ctx.hasUI) return;
 
 		if (usageEnabled) {
 			usageRefresher.refresh(access, {

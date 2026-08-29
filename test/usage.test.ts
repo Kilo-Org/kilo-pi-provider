@@ -69,18 +69,6 @@ describe("createUsageRefresher", () => {
 		expect(fetchUsageEntries).toHaveBeenCalledWith(access, "week");
 	});
 
-	test("clears usage when it is disabled", () => {
-		const setStatus = vi.fn();
-		const refresher = createUsageRefresher({
-			fetchUsageEntries: vi.fn(),
-			now: () => today,
-		});
-
-		refresher.refresh(access, { setStatus, accent: (text) => text });
-
-		expect(setStatus).toHaveBeenCalledWith("kilo-usage-day", undefined);
-	});
-
 	test("coalesces active refreshes and applies only the most recent result", async () => {
 		vi.stubEnv("KILO_USAGE", "1");
 		const first = deferred<KiloUsageEntry[] | null>();
