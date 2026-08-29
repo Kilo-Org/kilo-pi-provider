@@ -49,7 +49,11 @@ Kilo replaces Pi's footer by default to show usage and credits. To keep another 
 KILO_CUSTOM_FOOTER=0 pi
 ```
 
-Kilo credits remain available as the `kilo-credits` footer status.
+Kilo credits are shown by default and remain available as the `kilo-credits` footer status. To hide them and avoid balance requests, set `KILO_SHOW_CREDITS=0`:
+
+```bash
+KILO_SHOW_CREDITS=0 pi
+```
 
 To show today's Kilo spend, opt in to usage status reporting:
 

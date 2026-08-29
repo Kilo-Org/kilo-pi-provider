@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import kiloExtension, { parsePrice, usesCustomFooter } from "../src/index.ts";
+import kiloExtension, { parsePrice, showsCredits, usesCustomFooter } from "../src/index.ts";
 
 const temporaryDirectories: string[] = [];
 let agentDirectory: string;
@@ -16,6 +16,7 @@ beforeEach(() => {
 	vi.stubEnv("KILO_ORG_ID", "");
 	vi.stubEnv("KILOCODE_ORGANIZATION_ID", "");
 	vi.stubEnv("KILO_CUSTOM_FOOTER", "0");
+	vi.stubEnv("KILO_SHOW_CREDITS", "");
 	vi.stubEnv("KILO_USAGE", "");
 });
 
@@ -81,6 +82,25 @@ test.each([
 	expect(usesCustomFooter()).toBe(expected);
 });
 
+test.each([
+	[undefined, true],
+	["1", true],
+	["true", true],
+	["unexpected", true],
+	["0", false],
+	["false", false],
+	["FALSE", false],
+	[" no ", false],
+])("showsCredits returns %s for KILO_SHOW_CREDITS=%s", (value, expected) => {
+	if (value === undefined) {
+		vi.stubEnv("KILO_SHOW_CREDITS", undefined);
+	} else {
+		vi.stubEnv("KILO_SHOW_CREDITS", value);
+	}
+
+	expect(showsCredits()).toBe(expected);
+});
+
 test("parsePrice returns zero for an invalid price", () => {
 	expect(parsePrice("not-a-number")).toBe(0);
 });
@@ -141,6 +161,19 @@ test("exposes Kilo credits when the custom footer is disabled", async () => {
 
 	expect(setStatus).toHaveBeenCalledWith("kilo-credits", "💰 $12.34");
 	expect(context.ui.setFooter).not.toHaveBeenCalled();
+});
+
+test("does not fetch or display credits when KILO_SHOW_CREDITS is disabled", async () => {
+	vi.stubEnv("KILO_SHOW_CREDITS", "false");
+	const runtime = createRuntime({ apiKey: "api-key" });
+
+	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await handler(runtime.on, "session_start")({}, runtime.context);
+	await handler(runtime.on, "model_select")({ model: { provider: "kilo" } }, runtime.context);
+	await handler(runtime.on, "turn_end")({}, runtime.context);
+
+	expect(runtime.fetchMock.mock.calls.some(([url]) => String(url).endsWith("/balance"))).toBe(false);
+	expect(runtime.setStatus).not.toHaveBeenCalledWith("kilo-credits", expect.anything());
 });
 
 test("registers anonymous free models from the Kilo catalog", async () => {
