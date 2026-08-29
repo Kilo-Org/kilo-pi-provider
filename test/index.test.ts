@@ -1,8 +1,8 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import kiloExtension, { parsePrice, showsCredits } from "../src/index.ts";
+import kiloExtension, { parsePrice } from "../src/index.ts";
 
 const temporaryDirectories: string[] = [];
 let agentDirectory: string;
@@ -62,25 +62,6 @@ const catalogResponse = () =>
 		}),
 		{ status: 200, headers: { "Content-Type": "application/json" } },
 	);
-
-test.each([
-	[undefined, true],
-	["1", true],
-	["true", true],
-	["unexpected", true],
-	["0", false],
-	["false", false],
-	["FALSE", false],
-	[" no ", false],
-])("showsCredits returns %s for KILO_SHOW_CREDITS=%s", (value, expected) => {
-	if (value === undefined) {
-		vi.stubEnv("KILO_SHOW_CREDITS", undefined);
-	} else {
-		vi.stubEnv("KILO_SHOW_CREDITS", value);
-	}
-
-	expect(showsCredits()).toBe(expected);
-});
 
 test("parsePrice returns zero for an invalid price", () => {
 	expect(parsePrice("not-a-number")).toBe(0);
@@ -145,8 +126,10 @@ test("exposes Kilo credits when the custom footer is disabled", async () => {
 });
 
 test("does not fetch or display credits when KILO_SHOW_CREDITS is disabled", async () => {
-	vi.stubEnv("KILO_SHOW_CREDITS", "false");
 	const runtime = createRuntime({ apiKey: "api-key" });
+	const configDirectory = join(agentDirectory, "extensions", "kilo-pi-provider");
+	mkdirSync(configDirectory, { recursive: true });
+	writeFileSync(join(configDirectory, "config.json"), JSON.stringify({ credits: { enabled: false } }));
 
 	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
 	await handler(runtime.on, "session_start")({}, runtime.context);

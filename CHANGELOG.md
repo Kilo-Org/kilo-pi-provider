@@ -6,6 +6,17 @@ Release versions use calendar versioning: `YYYY.MM.PATCH`. `PATCH` starts at `0`
 
 ## [Unreleased]
 
+## [2026.08.1] - 2026-08-29
+
+### Added
+
+- Add global and trusted-project preference files for footer, credits, and usage reporting ([#21](https://github.com/Kilo-Org/kilo-pi-provider/pull/21)).
+- Support daily, weekly, monthly, and yearly usage statuses ([#21](https://github.com/Kilo-Org/kilo-pi-provider/pull/21)).
+
+### Changed
+
+- Support comma-separated usage periods in configuration and `KILO_USAGE`, for example `day,week` ([#21](https://github.com/Kilo-Org/kilo-pi-provider/pull/21)).
+
 ## [2026.08.0] - 2026-08-29
 
 ### Added

@@ -63,13 +63,27 @@ Kilo credits are shown by default and remain available as the `kilo-credits` foo
 KILO_SHOW_CREDITS=0 pi
 ```
 
-To show today's Kilo spend, opt in to usage status reporting:
+### Preferences
 
-```bash
-KILO_USAGE=1 pi
+Set non-secret preferences globally in `~/.pi/agent/extensions/kilo-pi-provider/config.json`, or per trusted project in `.pi/extensions/kilo-pi-provider/config.json`:
+
+```json
+{
+  "footer": { "custom": false },
+  "credits": { "enabled": true },
+  "usage": { "periods": ["day", "week"] }
+}
 ```
 
-`KILO_USAGE` also accepts `true`, `yes`, or `day`. Daily usage refreshes at session start and after completed turns.
+A trusted project file overrides the global file, and environment variables override both. Project preferences are ignored until Pi trusts the project. Keep API keys and OAuth credentials out of these files.
+
+Environment overrides are useful for one-off sessions:
+
+```bash
+KILO_USAGE=day,week pi
+```
+
+`KILO_USAGE` accepts comma-separated periods; `1`, `true`, and `yes` remain shorthand for `day`. Usage refreshes at session start and after completed turns.
 
 ## Development
 

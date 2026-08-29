@@ -29,9 +29,10 @@ import {
 	loginKilo,
 	refreshKiloToken,
 } from "./auth.ts";
-import { installCustomFooter, usesCustomFooter } from "./footer.ts";
+import { loadKiloPreferences } from "./config.ts";
+import { installCustomFooter } from "./footer.ts";
 
-import { createUsageRefresher, getRequestedUsagePeriods } from "./usage.ts";
+import { createUsageRefresher } from "./usage.ts";
 
 // =============================================================================
 // Constants
@@ -40,12 +41,6 @@ import { createUsageRefresher, getRequestedUsagePeriods } from "./usage.ts";
 const KILO_GATEWAY_BASE = `${KILO_API_BASE}/api/gateway`;
 const MODELS_FETCH_TIMEOUT_MS = 10_000;
 const KILO_TOS_URL = "https://kilo.ai/terms";
-
-/** Whether to fetch and display the Kilo credit balance in the footer. */
-export function showsCredits(): boolean {
-	const value = process.env.KILO_SHOW_CREDITS?.trim().toLowerCase();
-	return !["0", "false", "no"].includes(value ?? "");
-}
 
 function formatCredits(balance: number): string {
 	if (balance >= 1000) {
@@ -130,8 +125,7 @@ function makeProviderConfig(organizationId?: string) {
 
 export default async function (pi: ExtensionAPI) {
 	const startupAccess = getKiloAccess();
-	// Environment configuration is read once at extension startup.
-	const creditsEnabled = showsCredits();
+	let preferences = loadKiloPreferences({ cwd: process.cwd(), projectTrusted: false });
 
 	// Fetch models at load time so the provider is immediately usable for
 	// --list-models, --model selection, and print mode before session_start fires.
@@ -219,8 +213,12 @@ export default async function (pi: ExtensionAPI) {
 	// After session starts, pre-fetch all models if already logged in so
 	// modifyModels has data to work with. Also fetch and display credits.
 	pi.on("session_start", async (_event, ctx) => {
+		preferences = loadKiloPreferences({
+			cwd: ctx.cwd ?? process.cwd(),
+			projectTrusted: ctx.isProjectTrusted?.() ?? false,
+		});
 		const access = getKiloAccess();
-		const usageEnabled = getRequestedUsagePeriods().length > 0;
+		const usagePeriods = preferences.usage.periods;
 
 		// Clear a stale credit status after logout when an interactive UI is available.
 		if (!access) {
@@ -228,8 +226,8 @@ export default async function (pi: ExtensionAPI) {
 			return;
 		}
 
-		if (ctx.hasUI && usageEnabled) {
-			usageRefresher.refresh(access, {
+		if (ctx.hasUI && usagePeriods.length > 0) {
+			usageRefresher.refresh(access, usagePeriods, {
 				setStatus: (key, value) => ctx.ui.setStatus(key, value),
 				accent: (text) => ctx.ui.theme.fg("accent", text),
 			});
@@ -257,7 +255,7 @@ export default async function (pi: ExtensionAPI) {
 		}
 
 		// Fetch and display credits balance when enabled and an interactive UI is available.
-		if (ctx.hasUI && creditsEnabled) {
+		if (ctx.hasUI && preferences.credits.enabled) {
 			try {
 				const balance = await fetchKiloBalance(access.token, access.organizationId);
 				if (balance !== null) {
@@ -277,7 +275,7 @@ export default async function (pi: ExtensionAPI) {
 		const access = getKiloAccess();
 		if (!access) return;
 
-		if (!ctx.hasUI || !creditsEnabled) return;
+		if (!ctx.hasUI || !preferences.credits.enabled) return;
 
 		try {
 			const balance = await fetchKiloBalance(access.token, access.organizationId);
@@ -296,17 +294,17 @@ export default async function (pi: ExtensionAPI) {
 	// Refresh credits and opt-in usage after each turn.
 	pi.on("turn_end", async (_event, ctx) => {
 		const access = getKiloAccess();
-		const usageEnabled = getRequestedUsagePeriods().length > 0;
+		const usagePeriods = preferences.usage.periods;
 		if (!access || !ctx.hasUI) return;
 
-		if (usageEnabled) {
-			usageRefresher.refresh(access, {
+		if (usagePeriods.length > 0) {
+			usageRefresher.refresh(access, usagePeriods, {
 				setStatus: (key, value) => ctx.ui.setStatus(key, value),
 				accent: (text) => ctx.ui.theme.fg("accent", text),
 			});
 		}
 
-		if (!creditsEnabled) return;
+		if (!preferences.credits.enabled) return;
 
 		try {
 			const balance = await fetchKiloBalance(access.token, access.organizationId);
@@ -342,11 +340,7 @@ export default async function (pi: ExtensionAPI) {
 		};
 	});
 
-	// Use custom footer to show credits inline with token stats.
-	// Disable it with KILO_CUSTOM_FOOTER=0 to allow another extension's footer.
-	if (usesCustomFooter()) {
-		pi.on("session_start", async (_event, ctx) => {
-			installCustomFooter(pi, ctx, creditsEnabled);
-		});
-	}
+	pi.on("session_start", async (_event, ctx) => {
+		if (preferences.footer.custom) installCustomFooter(pi, ctx, preferences.credits.enabled);
+	});
 }

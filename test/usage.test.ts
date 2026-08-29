@@ -1,11 +1,6 @@
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import type { KiloAccess, KiloUsageEntry } from "../src/api.ts";
-import { createUsageRefresher, getRequestedUsagePeriods, getUsageFetchPeriod, sumUsageForDay } from "../src/usage.ts";
-
-afterEach(() => {
-	vi.unstubAllEnvs();
-	vi.restoreAllMocks();
-});
+import { createUsageRefresher, getUsageFetchPeriod, sumUsageForDay } from "../src/usage.ts";
 
 const access: KiloAccess = { token: "access-token" };
 const today = new Date("2026-08-22T12:00:00.000Z");
@@ -18,27 +13,13 @@ function deferred<T>() {
 	return { promise, resolve };
 }
 
-describe("getRequestedUsagePeriods", () => {
-	test.each(["1", "true", "TRUE", "yes", " day "])("enables daily usage for %j", (value) => {
-		vi.stubEnv("KILO_USAGE", value);
-
-		expect(getRequestedUsagePeriods()).toEqual(["day"]);
-	});
-
-	test.each([undefined, "", "0", "false", "no", "week", "unexpected"])("disables usage for %j", (value) => {
-		if (value === undefined) {
-			vi.stubEnv("KILO_USAGE", "");
-		} else {
-			vi.stubEnv("KILO_USAGE", value);
-		}
-
-		expect(getRequestedUsagePeriods()).toEqual([]);
-	});
-});
-
 describe("getUsageFetchPeriod", () => {
-	test("uses a rolling week for daily usage because the API has no day period", () => {
-		expect(getUsageFetchPeriod(["day"])).toBe("week");
+	test.each([
+		[["day"], "week"],
+		[["month"], "month"],
+		[["year"], "year"],
+	])("uses %s for %s usage", (periods, fetchPeriod) => {
+		expect(getUsageFetchPeriod(periods)).toBe(fetchPeriod);
 	});
 });
 
@@ -56,12 +37,11 @@ describe("sumUsageForDay", () => {
 
 describe("createUsageRefresher", () => {
 	test("publishes the daily status after a background refresh", async () => {
-		vi.stubEnv("KILO_USAGE", "day");
 		const fetchUsageEntries = vi.fn().mockResolvedValue([{ date: "2026-08-22", totalCostMicrodollars: 1_234_567 }]);
 		const setStatus = vi.fn();
 		const refresher = createUsageRefresher({ fetchUsageEntries, now: () => today });
 
-		refresher.refresh(access, { setStatus, accent: (text) => text });
+		refresher.refresh(access, ["day"], { setStatus, accent: (text) => text });
 
 		await vi.waitFor(() => {
 			expect(setStatus).toHaveBeenCalledWith("kilo-usage-day", "💸 $1.23 today");
@@ -69,8 +49,47 @@ describe("createUsageRefresher", () => {
 		expect(fetchUsageEntries).toHaveBeenCalledWith(access, "week");
 	});
 
+	test.each([
+		["week", "week", "💸 $2.00 this week"],
+		["month", "month", "💸 $2.00 this month"],
+		["year", "year", "💸 $2.00 this year"],
+	] as const)("publishes %s usage from every returned entry", async (period, fetchPeriod, expectedStatus) => {
+		const fetchUsageEntries = vi.fn().mockResolvedValue([
+			{ date: "2026-08-22", totalCostMicrodollars: 1_250_000 },
+			{ date: "2026-08-21", totalCostMicrodollars: 750_000 },
+		]);
+		const setStatus = vi.fn();
+		const refresher = createUsageRefresher({ fetchUsageEntries, now: () => today });
+
+		refresher.refresh(access, [period], { setStatus, accent: (text) => text });
+
+		await vi.waitFor(() => {
+			expect(setStatus).toHaveBeenCalledWith(`kilo-usage-${period}`, expectedStatus);
+		});
+		expect(fetchUsageEntries).toHaveBeenCalledWith(access, fetchPeriod);
+	});
+
+	test("does not fetch usage for an empty period list", () => {
+		const fetchUsageEntries = vi.fn();
+		const refresher = createUsageRefresher({ fetchUsageEntries });
+
+		refresher.refresh(access, [], { setStatus: vi.fn(), accent: (text) => text });
+
+		expect(fetchUsageEntries).not.toHaveBeenCalled();
+	});
+
+	test("does not publish a status when the usage endpoint has no entries", async () => {
+		const fetchUsageEntries = vi.fn().mockResolvedValue(null);
+		const setStatus = vi.fn();
+		const refresher = createUsageRefresher({ fetchUsageEntries });
+
+		refresher.refresh(access, ["day"], { setStatus, accent: (text) => text });
+
+		await vi.waitFor(() => expect(fetchUsageEntries).toHaveBeenCalledOnce());
+		expect(setStatus).not.toHaveBeenCalled();
+	});
+
 	test("coalesces active refreshes and applies only the most recent result", async () => {
-		vi.stubEnv("KILO_USAGE", "1");
 		const first = deferred<KiloUsageEntry[] | null>();
 		const second = deferred<KiloUsageEntry[] | null>();
 		const fetchUsageEntries = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
@@ -78,9 +97,9 @@ describe("createUsageRefresher", () => {
 		const refresher = createUsageRefresher({ fetchUsageEntries, now: () => today });
 		const presentation = { setStatus, accent: (text: string) => text };
 
-		refresher.refresh(access, presentation);
-		refresher.refresh({ token: "newest-token" }, presentation);
-		refresher.refresh({ token: "newest-token" }, presentation);
+		refresher.refresh(access, ["day"], presentation);
+		refresher.refresh({ token: "newest-token" }, ["day"], presentation);
+		refresher.refresh({ token: "newest-token" }, ["day"], presentation);
 
 		expect(fetchUsageEntries).toHaveBeenCalledTimes(1);
 		first.resolve([{ date: "2026-08-22", totalCostMicrodollars: 1_000_000 }]);
