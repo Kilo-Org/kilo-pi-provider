@@ -111,7 +111,7 @@ export function installCustomFooter(pi: FooterExtensionAPI, ctx: FooterContext, 
 				const modelName = model?.id || "no-model";
 				let rightSideWithoutProvider = modelName;
 				if (model?.reasoning) {
-					const thinkingLevel = pi.getThinkingLevel();
+					const thinkingLevel = pi.getThinkingLevel() || "off";
 					rightSideWithoutProvider =
 						thinkingLevel === "off" ? `${modelName} • thinking off` : `${modelName} • ${thinkingLevel}`;
 				}

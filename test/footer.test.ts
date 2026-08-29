@@ -39,7 +39,7 @@ function createFooter({
 	branch?: string;
 	statuses?: Map<string, string>;
 	providerCount?: number;
-	thinkingLevel?: ReturnType<FooterExtensionAPI["getThinkingLevel"]>;
+	thinkingLevel?: ReturnType<FooterExtensionAPI["getThinkingLevel"]> | null;
 	usingOAuth?: boolean;
 	creditsEnabled?: boolean;
 } = {}) {
@@ -54,7 +54,8 @@ function createFooter({
 		getContextUsage: () => contextUsage ?? undefined,
 		modelRegistry: { isUsingOAuth: () => usingOAuth },
 	};
-	const pi: FooterExtensionAPI = { getThinkingLevel: () => thinkingLevel };
+	// Exercise the legacy fallback even though Pi's current type is always a ThinkingLevel.
+	const pi = { getThinkingLevel: () => thinkingLevel } as FooterExtensionAPI;
 
 	// This fixture intentionally supplies only the footer's consumed Pi context members.
 	installCustomFooter(pi, context as unknown as FooterContext, creditsEnabled);
@@ -155,10 +156,10 @@ test("omits disabled credits and handles a missing model and context usage", () 
 	expect(stats).not.toContain("💰 hidden");
 });
 
-test("labels an off thinking level", () => {
+test.each(["off", null])("labels %s thinking level as off", (thinkingLevel) => {
 	const { footer } = createFooter({
 		model: { id: "reasoning-model", provider: "kilo", contextWindow: 1000, reasoning: true },
-		thinkingLevel: "off",
+		thinkingLevel,
 	});
 	expect(footer.render(200)[1]).toContain("reasoning-model • thinking off");
 });
