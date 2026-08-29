@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import kiloExtension, { parsePrice, showsCredits, usesCustomFooter } from "../src/index.ts";
+import kiloExtension, { parsePrice, showsCredits } from "../src/index.ts";
 
 const temporaryDirectories: string[] = [];
 let agentDirectory: string;
@@ -62,14 +62,6 @@ const catalogResponse = () =>
 		}),
 		{ status: 200, headers: { "Content-Type": "application/json" } },
 	);
-
-test.each([
-	[undefined, true],
-	["0", false],
-])("preserves usesCustomFooter as an entry-point export for KILO_CUSTOM_FOOTER=%s", (value, expected) => {
-	vi.stubEnv("KILO_CUSTOM_FOOTER", value);
-	expect(usesCustomFooter()).toBe(expected);
-});
 
 test.each([
 	[undefined, true],
