@@ -379,6 +379,16 @@ test("does not request usage or set a usage status by default", async () => {
 	expect(runtime.setStatus).not.toHaveBeenCalledWith("kilo-usage-day", expect.anything());
 });
 
+test("clears enabled daily usage when access is unavailable", async () => {
+	vi.stubEnv("KILO_USAGE", "day");
+	const runtime = createRuntime();
+
+	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await handler(runtime.on, "session_start")({}, runtime.context);
+
+	expect(runtime.setStatus).toHaveBeenCalledWith("kilo-usage-day", undefined);
+});
+
 test.each(["1", "true", "yes", "day"])("%s enables daily usage status refreshes", async (value) => {
 	vi.stubEnv("KILO_USAGE", value);
 	const runtime = createRuntime({
