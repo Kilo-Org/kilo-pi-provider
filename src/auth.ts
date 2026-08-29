@@ -2,7 +2,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { OAuthCredentials, OAuthLoginCallbacks } from "@earendil-works/pi-ai";
-import { fetchKiloProfile, KILO_API_BASE, type KiloProfile } from "./api.ts";
+import { fetchKiloProfile, KILO_API_BASE, type KiloAccess, type KiloProfile } from "./api.ts";
+
+export type { KiloAccess } from "./api.ts";
 
 const KILO_DEVICE_AUTH_ENDPOINT = `${KILO_API_BASE}/api/device-auth/codes`;
 const POLL_INTERVAL_MS = 3000;
@@ -38,11 +40,6 @@ export function getCredentialOrganizationId(credentials?: OAuthCredentials): str
 
 export function getEffectiveOrganizationId(credentials?: OAuthCredentials): string | undefined {
 	return getCredentialOrganizationId(credentials) ?? getEnvOrganizationId();
-}
-
-export interface KiloAccess {
-	token: string;
-	organizationId?: string;
 }
 
 export function getKiloAccess(): KiloAccess | undefined {
