@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import type { FooterContext, FooterEntry, FooterExtensionAPI, FooterModel } from "../src/footer.ts";
+import type { FooterContext, FooterExtensionAPI } from "../src/footer.ts";
 import { installCustomFooter, usesCustomFooter } from "../src/footer.ts";
 
 afterEach(() => {
@@ -32,9 +32,9 @@ function createFooter({
 	usingOAuth = false,
 	creditsEnabled = true,
 }: {
-	model?: FooterModel | null | undefined;
-	entries?: FooterEntry[];
-	contextUsage?: ReturnType<FooterContext["getContextUsage"]> | null;
+	model?: object | null | undefined;
+	entries?: object[];
+	contextUsage?: object | null | undefined;
 	sessionName?: string;
 	branch?: string;
 	statuses?: Map<string, string>;
@@ -53,10 +53,11 @@ function createFooter({
 		sessionManager: { getEntries: () => entries, getSessionName: () => sessionName },
 		getContextUsage: () => contextUsage ?? undefined,
 		modelRegistry: { isUsingOAuth: () => usingOAuth },
-	} satisfies FooterContext<FooterModel>;
-	const pi = { getThinkingLevel: () => thinkingLevel } satisfies FooterExtensionAPI;
+	};
+	const pi: FooterExtensionAPI = { getThinkingLevel: () => thinkingLevel };
 
-	installCustomFooter(pi, context, creditsEnabled);
+	// This fixture intentionally supplies only the footer's consumed Pi context members.
+	installCustomFooter(pi, context as unknown as FooterContext, creditsEnabled);
 	const footer = setFooter.mock.calls[0]?.[0]({ requestRender }, theme, {
 		onBranchChange: (listener: () => void) => {
 			listener();
@@ -154,10 +155,10 @@ test("omits disabled credits and handles a missing model and context usage", () 
 	expect(stats).not.toContain("💰 hidden");
 });
 
-test("uses the off label when a reasoning model has no selected thinking level", () => {
+test("labels an off thinking level", () => {
 	const { footer } = createFooter({
 		model: { id: "reasoning-model", provider: "kilo", contextWindow: 1000, reasoning: true },
-		thinkingLevel: undefined,
+		thinkingLevel: "off",
 	});
 	expect(footer.render(200)[1]).toContain("reasoning-model • thinking off");
 });

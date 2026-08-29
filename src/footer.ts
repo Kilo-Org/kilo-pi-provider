@@ -1,49 +1,19 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
 
-export type FooterModel = Pick<NonNullable<ExtensionContext["model"]>, "id" | "provider" | "contextWindow"> & {
-	reasoning?: boolean;
-};
-export type AssistantUsage = {
-	input: number;
-	output: number;
-	cacheRead: number;
-	cacheWrite: number;
-	cost: { total: number };
-};
-export type FooterEntry = {
-	type: string;
-	message?: { role?: string; usage?: AssistantUsage };
-};
-
-/** The minimum Pi extension surface required by the custom footer. */
-export type FooterContext<Model extends FooterModel = NonNullable<ExtensionContext["model"]>> = {
-	model: Model | undefined;
-	ui: Pick<ExtensionContext["ui"], "setFooter">;
-	sessionManager: {
-		getEntries(): Iterable<FooterEntry>;
-		getSessionName(): string | undefined;
-	};
-	getContextUsage():
-		| Pick<NonNullable<ReturnType<ExtensionContext["getContextUsage"]>>, "contextWindow" | "percent">
-		| undefined;
-	modelRegistry: { isUsingOAuth(model: Model): boolean };
-};
-
-export type FooterExtensionAPI = {
-	getThinkingLevel(): ReturnType<ExtensionAPI["getThinkingLevel"]> | undefined;
-};
+/** The Pi extension surface consumed by the custom footer. */
+export type FooterContext = Pick<
+	ExtensionContext,
+	"model" | "ui" | "sessionManager" | "getContextUsage" | "modelRegistry"
+>;
+export type FooterExtensionAPI = Pick<ExtensionAPI, "getThinkingLevel">;
 
 export function usesCustomFooter(): boolean {
 	const value = process.env.KILO_CUSTOM_FOOTER?.trim().toLowerCase();
 	return !["0", "false", "no"].includes(value ?? "");
 }
 
-export function installCustomFooter<Model extends FooterModel>(
-	pi: FooterExtensionAPI,
-	ctx: FooterContext<Model>,
-	creditsEnabled: boolean,
-): void {
+export function installCustomFooter(pi: FooterExtensionAPI, ctx: FooterContext, creditsEnabled: boolean): void {
 	ctx.ui.setFooter((tui, theme, footerData) => {
 		const unsubBranch = footerData.onBranchChange(() => tui.requestRender());
 
@@ -69,13 +39,12 @@ export function installCustomFooter<Model extends FooterModel>(
 				let totalCacheWrite = 0;
 				let totalCost = 0;
 				for (const entry of ctx.sessionManager.getEntries()) {
-					const usage = entry.message?.usage;
-					if (entry.type === "message" && entry.message?.role === "assistant" && usage) {
-						totalInput += usage.input;
-						totalOutput += usage.output;
-						totalCacheRead += usage.cacheRead;
-						totalCacheWrite += usage.cacheWrite;
-						totalCost += usage.cost.total;
+					if (entry.type === "message" && entry.message.role === "assistant") {
+						totalInput += entry.message.usage.input;
+						totalOutput += entry.message.usage.output;
+						totalCacheRead += entry.message.usage.cacheRead;
+						totalCacheWrite += entry.message.usage.cacheWrite;
+						totalCost += entry.message.usage.cost.total;
 					}
 				}
 
@@ -142,7 +111,7 @@ export function installCustomFooter<Model extends FooterModel>(
 				const modelName = model?.id || "no-model";
 				let rightSideWithoutProvider = modelName;
 				if (model?.reasoning) {
-					const thinkingLevel = pi.getThinkingLevel() || "off";
+					const thinkingLevel = pi.getThinkingLevel();
 					rightSideWithoutProvider =
 						thinkingLevel === "off" ? `${modelName} • thinking off` : `${modelName} • ${thinkingLevel}`;
 				}
