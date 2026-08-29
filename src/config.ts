@@ -12,7 +12,8 @@ const CreditsPreferences = Type.Object({ enabled: Type.Optional(Type.Boolean()) 
 const UsagePreferences = Type.Object({
 	periods: Type.Optional(Type.Array(Type.Enum(KILO_USAGE_PERIODS))),
 });
-const PreferencesContainer = Type.Object({});
+// Validate sections separately so one malformed section does not discard valid siblings.
+const PreferencesRoot = Type.Object({});
 
 export type KiloPreferences = {
 	footer?: Type.Static<typeof FooterPreferences>;
@@ -41,7 +42,7 @@ function readKiloPreferences(path: string): KiloPreferences {
 	if (!existsSync(path)) return {};
 	try {
 		const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
-		if (!Value.Check(PreferencesContainer, parsed)) return {};
+		if (!Value.Check(PreferencesRoot, parsed)) return {};
 
 		const footer = "footer" in parsed && Value.Check(FooterPreferences, parsed.footer) ? parsed.footer : undefined;
 		const credits =
