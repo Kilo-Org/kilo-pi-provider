@@ -1,14 +1,23 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import Type from "typebox";
+import Value from "typebox/value";
 
 export const KILO_USAGE_PERIODS = ["day", "week", "month", "year"] as const;
 export type KiloUsageDisplayPeriod = (typeof KILO_USAGE_PERIODS)[number];
 
+const FooterPreferences = Type.Object({ custom: Type.Optional(Type.Boolean()) });
+const CreditsPreferences = Type.Object({ enabled: Type.Optional(Type.Boolean()) });
+const UsagePreferences = Type.Object({
+	periods: Type.Optional(Type.Array(Type.Enum(KILO_USAGE_PERIODS))),
+});
+const PreferencesContainer = Type.Object({});
+
 export type KiloPreferences = {
-	footer?: { custom?: boolean };
-	credits?: { enabled?: boolean };
-	usage?: { periods?: KiloUsageDisplayPeriod[] };
+	footer?: Type.Static<typeof FooterPreferences>;
+	credits?: Type.Static<typeof CreditsPreferences>;
+	usage?: Type.Static<typeof UsagePreferences>;
 };
 
 export type ResolvedKiloPreferences = {
@@ -24,35 +33,25 @@ const DEFAULT_PREFERENCES: ResolvedKiloPreferences = {
 	usage: { periods: [] },
 };
 
-function isUsagePeriod(value: unknown): value is KiloUsageDisplayPeriod {
-	return typeof value === "string" && KILO_USAGE_PERIODS.includes(value as KiloUsageDisplayPeriod);
-}
-
-type PreferencesObject = {
-	footer?: unknown;
-	credits?: unknown;
-	usage?: unknown;
-};
-
-function isPreferencesObject(value: unknown): value is PreferencesObject {
-	return value !== null && typeof value === "object" && !Array.isArray(value);
+function isUsagePeriod(value: string): value is KiloUsageDisplayPeriod {
+	return KILO_USAGE_PERIODS.some((period) => period === value);
 }
 
 function readKiloPreferences(path: string): KiloPreferences {
 	if (!existsSync(path)) return {};
 	try {
 		const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
-		if (!isPreferencesObject(parsed)) return {};
-		const footer = isPreferencesObject(parsed.footer) ? parsed.footer : undefined;
-		const credits = isPreferencesObject(parsed.credits) ? parsed.credits : undefined;
-		const usage = isPreferencesObject(parsed.usage) ? parsed.usage : undefined;
+		if (!Value.Check(PreferencesContainer, parsed)) return {};
+
+		const footer = "footer" in parsed && Value.Check(FooterPreferences, parsed.footer) ? parsed.footer : undefined;
+		const credits =
+			"credits" in parsed && Value.Check(CreditsPreferences, parsed.credits) ? parsed.credits : undefined;
+		const usage = "usage" in parsed && Value.Check(UsagePreferences, parsed.usage) ? parsed.usage : undefined;
+
 		return {
-			footer: typeof footer?.custom === "boolean" ? { custom: footer.custom } : undefined,
-			credits: typeof credits?.enabled === "boolean" ? { enabled: credits.enabled } : undefined,
-			usage:
-				Array.isArray(usage?.periods) && usage.periods.every(isUsagePeriod)
-					? { periods: usage.periods }
-					: undefined,
+			footer: footer?.custom === undefined ? undefined : { custom: footer.custom },
+			credits: credits?.enabled === undefined ? undefined : { enabled: credits.enabled },
+			usage: usage?.periods === undefined ? undefined : { periods: usage.periods },
 		};
 	} catch {
 		return {};
