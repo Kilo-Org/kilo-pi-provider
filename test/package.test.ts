@@ -18,8 +18,21 @@ test("declared Pi extension entry points exist", () => {
 	}
 });
 
-test("pins the Pi TUI version used by the extension", () => {
-	expect(packageJson.devDependencies["@earendil-works/pi-tui"]).toBe("0.84.4");
+test("provides strict type checking against one pinned Pi version", () => {
+	expect(packageJson.scripts.typecheck).toBe("tsc");
+	expect(packageJson.devDependencies.typescript).toMatch(/^\d+\.\d+\.\d+$/);
+	expect(packageJson.devDependencies["@types/node"]).toMatch(/^\d+\.\d+\.\d+$/);
+
+	const piVersion = packageJson.devDependencies["@earendil-works/pi-coding-agent"];
+	expect(piVersion).toBe("0.84.4");
+	expect(packageJson.devDependencies["@earendil-works/pi-ai"]).toBe(piVersion);
+	expect(packageJson.devDependencies["@earendil-works/pi-tui"]).toBe(piVersion);
+
+	const tsconfig = JSON.parse(readFileSync(resolve(repositoryRoot, "tsconfig.json"), "utf8"));
+	expect(tsconfig).toMatchObject({
+		compilerOptions: { noEmit: true, strict: true },
+		include: ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"],
+	});
 });
 
 test("provides the upstream Pi Biome check", () => {
