@@ -19,8 +19,16 @@ npm install -g --ignore-scripts @earendil-works/pi-coding-agent
 
 ## Installation
 
+Install the latest version:
+
 ```bash
 pi install git:github.com/Kilo-Org/kilo-pi-provider
+```
+
+For a reproducible installation, pin a [release tag](./CHANGELOG.md):
+
+```bash
+pi install git:github.com/Kilo-Org/kilo-pi-provider@v2026.08.0
 ```
 
 ## Usage
