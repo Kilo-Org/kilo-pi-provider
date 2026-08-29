@@ -1,6 +1,7 @@
 import type { KiloAccess, KiloUsageEntry, KiloUsageFetchPeriod } from "./api.ts";
+import type { KiloUsageDisplayPeriod } from "./config.ts";
 
-export type KiloUsageDisplayPeriod = "day" | "week" | "month" | "year";
+export type { KiloUsageDisplayPeriod } from "./config.ts";
 
 const USAGE_STATUS_PREFIX = "kilo-usage-";
 
@@ -19,11 +20,6 @@ interface UsageRefreshRequest {
 interface UsageRefresherOptions {
 	fetchUsageEntries(access: KiloAccess, period: KiloUsageFetchPeriod): Promise<KiloUsageEntry[] | null>;
 	now?(): Date;
-}
-
-export function getRequestedUsagePeriods(): KiloUsageDisplayPeriod[] {
-	const value = process.env.KILO_USAGE?.trim().toLowerCase();
-	return ["1", "true", "yes", "day"].includes(value ?? "") ? ["day"] : [];
 }
 
 export function getUsageFetchPeriod(periods: KiloUsageDisplayPeriod[]): KiloUsageFetchPeriod {
@@ -85,8 +81,7 @@ export function createUsageRefresher(options: UsageRefresherOptions) {
 	}
 
 	return {
-		refresh(access: KiloAccess, presentation: UsageStatusPresentation): void {
-			const periods = getRequestedUsagePeriods();
+		refresh(access: KiloAccess, periods: KiloUsageDisplayPeriod[], presentation: UsageStatusPresentation): void {
 			if (periods.length === 0) return;
 
 			revision += 1;

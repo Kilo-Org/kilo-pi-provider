@@ -7,7 +7,7 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const packageJson = JSON.parse(readFileSync(resolve(repositoryRoot, "package.json"), "utf8"));
 
 test("declares the first calendar-versioned release", () => {
-	expect(packageJson.version).toBe("2026.08.0");
+	expect(packageJson.version).toBe("2026.08.1");
 });
 
 test("declared Pi extension entry points exist", () => {
@@ -16,6 +16,10 @@ test("declared Pi extension entry points exist", () => {
 	for (const extension of packageJson.pi.extensions) {
 		expect(existsSync(resolve(repositoryRoot, extension)), `${extension} does not exist`).toBe(true);
 	}
+});
+
+test("pins the Pi TUI version used by the extension", () => {
+	expect(packageJson.devDependencies["@earendil-works/pi-tui"]).toBe("0.84.4");
 });
 
 test("provides the upstream Pi Biome check", () => {
