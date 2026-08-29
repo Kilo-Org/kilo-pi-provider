@@ -32,14 +32,14 @@ function createFooter({
 	usingOAuth = false,
 	creditsEnabled = true,
 }: {
-	model?: FooterModel | undefined;
+	model?: FooterModel | null | undefined;
 	entries?: FooterEntry[];
 	contextUsage?: ReturnType<FooterContext["getContextUsage"]> | null;
 	sessionName?: string;
 	branch?: string;
 	statuses?: Map<string, string>;
 	providerCount?: number;
-	thinkingLevel?: string | null | undefined;
+	thinkingLevel?: ReturnType<FooterExtensionAPI["getThinkingLevel"]>;
 	usingOAuth?: boolean;
 	creditsEnabled?: boolean;
 } = {}) {
@@ -48,12 +48,12 @@ function createFooter({
 	const unsubscribe = vi.fn();
 	const theme = { fg: vi.fn((_tone: string, text: string) => text) };
 	const context = {
-		model,
+		model: model ?? undefined,
 		ui: { setFooter },
 		sessionManager: { getEntries: () => entries, getSessionName: () => sessionName },
 		getContextUsage: () => contextUsage ?? undefined,
 		modelRegistry: { isUsingOAuth: () => usingOAuth },
-	} satisfies FooterContext;
+	} satisfies FooterContext<FooterModel>;
 	const pi = { getThinkingLevel: () => thinkingLevel } satisfies FooterExtensionAPI;
 
 	installCustomFooter(pi, context, creditsEnabled);
@@ -157,7 +157,7 @@ test("omits disabled credits and handles a missing model and context usage", () 
 test("uses the off label when a reasoning model has no selected thinking level", () => {
 	const { footer } = createFooter({
 		model: { id: "reasoning-model", provider: "kilo", contextWindow: 1000, reasoning: true },
-		thinkingLevel: null,
+		thinkingLevel: undefined,
 	});
 	expect(footer.render(200)[1]).toContain("reasoning-model • thinking off");
 });
