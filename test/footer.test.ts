@@ -1,4 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
+import type { FooterContext, FooterEntry, FooterExtensionAPI, FooterModel } from "../src/footer.ts";
 import { installCustomFooter, usesCustomFooter } from "../src/footer.ts";
 
 afterEach(() => {
@@ -31,9 +32,9 @@ function createFooter({
 	usingOAuth = false,
 	creditsEnabled = true,
 }: {
-	model?: object | undefined;
-	entries?: object[];
-	contextUsage?: object | null | undefined;
+	model?: FooterModel | undefined;
+	entries?: FooterEntry[];
+	contextUsage?: ReturnType<FooterContext["getContextUsage"]> | null;
 	sessionName?: string;
 	branch?: string;
 	statuses?: Map<string, string>;
@@ -50,11 +51,12 @@ function createFooter({
 		model,
 		ui: { setFooter },
 		sessionManager: { getEntries: () => entries, getSessionName: () => sessionName },
-		getContextUsage: () => contextUsage,
+		getContextUsage: () => contextUsage ?? undefined,
 		modelRegistry: { isUsingOAuth: () => usingOAuth },
-	};
+	} satisfies FooterContext;
+	const pi = { getThinkingLevel: () => thinkingLevel } satisfies FooterExtensionAPI;
 
-	installCustomFooter({ getThinkingLevel: () => thinkingLevel } as never, context as never, creditsEnabled);
+	installCustomFooter(pi, context, creditsEnabled);
 	const footer = setFooter.mock.calls[0]?.[0]({ requestRender }, theme, {
 		onBranchChange: (listener: () => void) => {
 			listener();

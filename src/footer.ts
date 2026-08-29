@@ -1,12 +1,43 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
 
+export type FooterModel = Pick<
+	NonNullable<ExtensionContext["model"]>,
+	"id" | "provider" | "contextWindow" | "reasoning"
+>;
+export type AssistantUsage = {
+	input: number;
+	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+	cost: { total: number };
+};
+export type FooterEntry =
+	| { type: "message"; message: { role: "assistant"; usage: AssistantUsage } }
+	| { type: string; message?: { role?: string } };
+
+/** The minimum Pi extension surface required by the custom footer. */
+export type FooterContext = {
+	model: FooterModel | undefined;
+	ui: Pick<ExtensionContext["ui"], "setFooter">;
+	sessionManager: {
+		getEntries(): Iterable<FooterEntry>;
+		getSessionName(): string | undefined;
+	};
+	getContextUsage():
+		| Pick<NonNullable<ReturnType<ExtensionContext["getContextUsage"]>>, "contextWindow" | "percent">
+		| undefined;
+	modelRegistry: Pick<ExtensionContext["modelRegistry"], "isUsingOAuth">;
+};
+
+export type FooterExtensionAPI = Pick<ExtensionAPI, "getThinkingLevel">;
+
 export function usesCustomFooter(): boolean {
 	const value = process.env.KILO_CUSTOM_FOOTER?.trim().toLowerCase();
 	return !["0", "false", "no"].includes(value ?? "");
 }
 
-export function installCustomFooter(pi: ExtensionAPI, ctx: ExtensionContext, creditsEnabled: boolean): void {
+export function installCustomFooter(pi: FooterExtensionAPI, ctx: FooterContext, creditsEnabled: boolean): void {
 	ctx.ui.setFooter((tui, theme, footerData) => {
 		const unsubBranch = footerData.onBranchChange(() => tui.requestRender());
 
