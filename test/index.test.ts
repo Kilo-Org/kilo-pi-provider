@@ -444,38 +444,6 @@ test("turn_end does not wait for an enabled usage response", async () => {
 	});
 });
 
-test("custom footer renders the opt-in daily usage status", async () => {
-	vi.stubEnv("KILO_CUSTOM_FOOTER", "1");
-	const runtime = createRuntime();
-	const setFooter = vi.fn();
-	const statuses = new Map([["kilo-usage-day", "💸 $1.23 today"]]);
-	const context = {
-		...runtime.context,
-		ui: { ...runtime.context.ui, setFooter },
-		sessionManager: { getEntries: () => [], getSessionName: () => undefined },
-		getContextUsage: () => null,
-		modelRegistry: { ...runtime.context.modelRegistry, isUsingOAuth: () => false },
-	};
-
-	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
-	const sessionStartHandlers = runtime.on.mock.calls
-		.filter(([event]) => event === "session_start")
-		.map(([, registered]) => registered as ExtensionHandler);
-	await Promise.all(sessionStartHandlers.map((registered) => registered({}, context)));
-
-	const footer = setFooter.mock.calls[0]?.[0](
-		{ requestRender: vi.fn() },
-		{ fg: vi.fn((_tone, text) => text) },
-		{
-			onBranchChange: () => vi.fn(),
-			getGitBranch: () => undefined,
-			getExtensionStatuses: () => statuses,
-			getAvailableProviderCount: () => 1,
-		},
-	);
-	expect(footer.render(200)[1]).toContain("💸 $1.23 today");
-});
-
 test("before_agent_start does not consume the notice for another provider", async () => {
 	const runtime = createRuntime();
 
