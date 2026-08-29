@@ -30,6 +30,9 @@ import {
 	refreshKiloToken,
 } from "./auth.ts";
 import { installCustomFooter, usesCustomFooter } from "./footer.ts";
+
+export { usesCustomFooter } from "./footer.ts";
+
 import { createUsageRefresher, getRequestedUsagePeriods } from "./usage.ts";
 
 // =============================================================================
