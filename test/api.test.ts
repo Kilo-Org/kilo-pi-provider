@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import {
 	fetchKiloBalance,
 	fetchKiloProfile,
+	fetchKiloUsageEntries,
 	KILO_API_BASE,
 	KILO_ORG_HEADER,
 	withOrganizationHeader,
@@ -89,6 +90,61 @@ describe("fetchKiloProfile", () => {
 		vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockRejectedValue(error));
 
 		await expect(fetchKiloProfile("access-token")).rejects.toBe(error);
+	});
+});
+
+describe("fetchKiloUsageEntries", () => {
+	test("requests weekly personal usage and normalizes valid rows", async () => {
+		const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					usage: [
+						{ date: "2026-08-22", total_cost: 1_250_000 },
+						{ date: "invalid", total_cost: 10 },
+						{ date: "2026-08-21", total_cost: "bad" },
+					],
+				}),
+				{ status: 200 },
+			),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(fetchKiloUsageEntries({ token: "access-token" }, "week")).resolves.toEqual([
+			{ date: "2026-08-22", totalCostMicrodollars: 1_250_000 },
+		]);
+		expect(fetchMock).toHaveBeenCalledWith(
+			`${KILO_API_BASE}/api/profile/usage?period=week&viewType=personal`,
+			expect.objectContaining({ headers: { Authorization: "Bearer access-token" } }),
+		);
+	});
+
+	test("requests organization usage with its view and header", async () => {
+		const fetchMock = vi
+			.fn<typeof fetch>()
+			.mockResolvedValue(new Response(JSON.stringify({ usage: [] }), { status: 200 }));
+		vi.stubGlobal("fetch", fetchMock);
+
+		await fetchKiloUsageEntries({ token: "access-token", organizationId: "organization-id" }, "month");
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			`${KILO_API_BASE}/api/profile/usage?period=month&viewType=organization-id`,
+			expect.objectContaining({
+				headers: {
+					Authorization: "Bearer access-token",
+					"X-KiloCode-OrganizationId": "organization-id",
+				},
+			}),
+		);
+	});
+
+	test.each([
+		["a non-OK response", () => Promise.resolve(new Response(null, { status: 503 }))],
+		["a malformed payload", () => Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))],
+		["a network error", () => Promise.reject(new Error("network failure"))],
+	])("returns null for %s", async (_name, response) => {
+		vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockImplementation(response));
+
+		await expect(fetchKiloUsageEntries({ token: "access-token" }, "week")).resolves.toBeNull();
 	});
 });
 
