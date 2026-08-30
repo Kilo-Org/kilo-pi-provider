@@ -54,13 +54,13 @@ You can also set `KILO_API_KEY` directly instead of using the login flow. Set `K
 Kilo replaces Pi's footer by default to show usage and credits. To keep another extension's custom footer, disable Kilo's footer:
 
 ```bash
-KILO_CUSTOM_FOOTER=0 pi
+KILO_PI_CUSTOM_FOOTER=0 pi
 ```
 
-Kilo credits are shown by default and remain available as the `kilo-credits` footer status. To hide them and avoid balance requests, set `KILO_SHOW_CREDITS=0`:
+Kilo credits are shown by default and remain available as the `kilo-credits` footer status. To hide them and avoid balance requests, set `KILO_PI_SHOW_CREDITS=0`:
 
 ```bash
-KILO_SHOW_CREDITS=0 pi
+KILO_PI_SHOW_CREDITS=0 pi
 ```
 
 ### Preferences
@@ -80,10 +80,10 @@ A trusted project file overrides the global file, and environment variables over
 Environment overrides are useful for one-off sessions:
 
 ```bash
-KILO_USAGE=day,week pi
+KILO_PI_USAGE=day,week pi
 ```
 
-`KILO_USAGE` accepts comma-separated periods; `1`, `true`, and `yes` remain shorthand for `day`. Usage refreshes at session start and after completed turns.
+`KILO_PI_USAGE` accepts comma-separated periods; `1`, `true`, and `yes` remain shorthand for `day`. Usage refreshes at session start and after completed turns.
 
 ## Development
 

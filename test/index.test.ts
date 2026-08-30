@@ -15,9 +15,9 @@ beforeEach(() => {
 	vi.stubEnv("KILO_API_KEY", "");
 	vi.stubEnv("KILO_ORG_ID", "");
 	vi.stubEnv("KILOCODE_ORGANIZATION_ID", "");
-	vi.stubEnv("KILO_CUSTOM_FOOTER", "0");
-	vi.stubEnv("KILO_SHOW_CREDITS", "");
-	vi.stubEnv("KILO_USAGE", "");
+	vi.stubEnv("KILO_PI_CUSTOM_FOOTER", "0");
+	vi.stubEnv("KILO_PI_SHOW_CREDITS", "");
+	vi.stubEnv("KILO_PI_USAGE", "");
 });
 
 afterEach(() => {
@@ -68,7 +68,7 @@ test("parsePrice returns zero for an invalid price", () => {
 });
 
 async function customFooterWasInstalled(customFooter: string): Promise<boolean> {
-	vi.stubEnv("KILO_CUSTOM_FOOTER", customFooter);
+	vi.stubEnv("KILO_PI_CUSTOM_FOOTER", customFooter);
 	vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(catalogResponse()));
 
 	const on = vi.fn();
@@ -125,7 +125,7 @@ test("exposes Kilo credits when the custom footer is disabled", async () => {
 	expect(context.ui.setFooter).not.toHaveBeenCalled();
 });
 
-test("does not fetch or display credits when KILO_SHOW_CREDITS is disabled", async () => {
+test("does not fetch or display credits when KILO_PI_SHOW_CREDITS is disabled", async () => {
 	const runtime = createRuntime({ apiKey: "api-key" });
 	const configDirectory = join(agentDirectory, "extensions", "kilo-pi-provider");
 	mkdirSync(configDirectory, { recursive: true });
@@ -377,7 +377,7 @@ test("does not request usage or set a usage status by default", async () => {
 });
 
 test.each(["1", "true", "yes", "day"])("%s enables daily usage status refreshes", async (value) => {
-	vi.stubEnv("KILO_USAGE", value);
+	vi.stubEnv("KILO_PI_USAGE", value);
 	const runtime = createRuntime({
 		apiKey: "api-key",
 		usage: { usage: [{ date: new Date().toISOString().slice(0, 10), total_cost: 1_234_567 }] },
@@ -393,7 +393,7 @@ test.each(["1", "true", "yes", "day"])("%s enables daily usage status refreshes"
 });
 
 test("turn_end schedules an enabled daily usage refresh", async () => {
-	vi.stubEnv("KILO_USAGE", "day");
+	vi.stubEnv("KILO_PI_USAGE", "day");
 	const runtime = createRuntime({
 		apiKey: "api-key",
 		usage: { usage: [{ date: new Date().toISOString().slice(0, 10), total_cost: 2_000_000 }] },
@@ -408,7 +408,7 @@ test("turn_end schedules an enabled daily usage refresh", async () => {
 });
 
 test("turn_end does not wait for an enabled usage response", async () => {
-	vi.stubEnv("KILO_USAGE", "day");
+	vi.stubEnv("KILO_PI_USAGE", "day");
 	const usageResponse = deferred<Response>();
 	const runtime = createRuntime({ apiKey: "api-key", usageResponse: usageResponse.promise });
 

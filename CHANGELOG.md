@@ -6,6 +6,19 @@ Release versions use calendar versioning: `YYYY.MM.PATCH`. `PATCH` starts at `0`
 
 ## [Unreleased]
 
+## [2026.08.2] - 2026-08-30
+
+### Breaking Changes
+
+- Rename Pi-extension environment variables to the `KILO_PI_` namespace ([#26](https://github.com/Kilo-Org/kilo-pi-provider/pull/26)):
+  - `KILO_CUSTOM_FOOTER` → `KILO_PI_CUSTOM_FOOTER`
+  - `KILO_SHOW_CREDITS` → `KILO_PI_SHOW_CREDITS`
+  - `KILO_USAGE` → `KILO_PI_USAGE`
+
+### Fixed
+
+- Derive each selected usage period from the shared widest-range API response ([#25](https://github.com/Kilo-Org/kilo-pi-provider/pull/25)).
+
 ## [2026.08.1] - 2026-08-29
 
 ### Added
@@ -15,7 +28,7 @@ Release versions use calendar versioning: `YYYY.MM.PATCH`. `PATCH` starts at `0`
 
 ### Changed
 
-- Support comma-separated usage periods in configuration and `KILO_USAGE`, for example `day,week` ([#21](https://github.com/Kilo-Org/kilo-pi-provider/pull/21)).
+- Support comma-separated usage periods in configuration and `KILO_PI_USAGE`, for example `day,week` ([#21](https://github.com/Kilo-Org/kilo-pi-provider/pull/21)).
 
 ## [2026.08.0] - 2026-08-29
 

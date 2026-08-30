@@ -15,8 +15,8 @@ test.each([
 	["false", false],
 	["FALSE", false],
 	[" no ", false],
-])("usesCustomFooter returns %s for KILO_CUSTOM_FOOTER=%s", (value, expected) => {
-	vi.stubEnv("KILO_CUSTOM_FOOTER", value);
+])("usesCustomFooter returns %s for KILO_PI_CUSTOM_FOOTER=%s", (value, expected) => {
+	vi.stubEnv("KILO_PI_CUSTOM_FOOTER", value);
 	expect(usesCustomFooter()).toBe(expected);
 });
 

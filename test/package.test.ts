@@ -7,7 +7,7 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const packageJson = JSON.parse(readFileSync(resolve(repositoryRoot, "package.json"), "utf8"));
 
 test("declares the first calendar-versioned release", () => {
-	expect(packageJson.version).toBe("2026.08.1");
+	expect(packageJson.version).toBe("2026.08.2");
 });
 
 test("declared Pi extension entry points exist", () => {

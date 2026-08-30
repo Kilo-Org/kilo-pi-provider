@@ -87,9 +87,9 @@ function environmentUsagePeriods(value: string | undefined): KiloUsageDisplayPer
 
 export function getEnvironmentPreferences(environment: NodeJS.ProcessEnv = process.env): KiloPreferences {
 	return {
-		footer: { custom: environmentBoolean(environment.KILO_CUSTOM_FOOTER, true) },
-		credits: { enabled: environmentBoolean(environment.KILO_SHOW_CREDITS, true) },
-		usage: { periods: environmentUsagePeriods(environment.KILO_USAGE) },
+		footer: { custom: environmentBoolean(environment.KILO_PI_CUSTOM_FOOTER, true) },
+		credits: { enabled: environmentBoolean(environment.KILO_PI_SHOW_CREDITS, true) },
+		usage: { periods: environmentUsagePeriods(environment.KILO_PI_USAGE) },
 	};
 }
 
