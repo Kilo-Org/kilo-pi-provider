@@ -90,6 +90,51 @@ describe("loadKiloPreferences", () => {
 		});
 	});
 
+	test("keeps valid sections when a sibling section is invalid", () => {
+		const agentDirectory = createDirectory();
+		const cwd = createDirectory();
+		writeConfig(agentDirectory, {
+			footer: { custom: false },
+			credits: { enabled: "yes" },
+			usage: { periods: ["day", "invalid"] },
+		});
+
+		expect(loadKiloPreferences({ agentDirectory, cwd, projectTrusted: false, environment: {} })).toEqual({
+			footer: { custom: false },
+			credits: { enabled: true },
+			usage: { periods: [] },
+		});
+	});
+
+	test("ignores unknown properties in valid sections", () => {
+		const agentDirectory = createDirectory();
+		const cwd = createDirectory();
+		writeConfig(agentDirectory, {
+			footer: { custom: false, unknown: 123 },
+			credits: { enabled: false, unknown: 123 },
+			usage: { periods: [], unknown: 123 },
+			unknown: 123,
+		});
+
+		expect(loadKiloPreferences({ agentDirectory, cwd, projectTrusted: false, environment: {} })).toEqual({
+			footer: { custom: false },
+			credits: { enabled: false },
+			usage: { periods: [] },
+		});
+	});
+
+	test("ignores sections whose known property is absent", () => {
+		const agentDirectory = createDirectory();
+		const cwd = createDirectory();
+		writeConfig(agentDirectory, { footer: {}, credits: {}, usage: {} });
+
+		expect(loadKiloPreferences({ agentDirectory, cwd, projectTrusted: false, environment: {} })).toEqual({
+			footer: { custom: true },
+			credits: { enabled: true },
+			usage: { periods: [] },
+		});
+	});
+
 	test.each(["{", "null", "[]"])("falls back to defaults for invalid config: %s", (config) => {
 		const agentDirectory = createDirectory();
 		const cwd = createDirectory();
