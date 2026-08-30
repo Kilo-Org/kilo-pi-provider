@@ -1,6 +1,11 @@
 import { describe, expect, test, vi } from "vitest";
 import type { KiloAccess, KiloUsageEntry } from "../src/api.ts";
-import { createUsageRefresher, getUsageFetchPeriod, sumUsageForDay } from "../src/usage.ts";
+import {
+	createUsageRefresher,
+	getUsageFetchPeriod,
+	type KiloUsageDisplayPeriod,
+	sumUsageForDay,
+} from "../src/usage.ts";
 
 const access: KiloAccess = { token: "access-token" };
 const today = new Date("2026-08-22T12:00:00.000Z");
@@ -18,9 +23,12 @@ describe("getUsageFetchPeriod", () => {
 		[["day"], "week"],
 		[["month"], "month"],
 		[["year"], "year"],
-	])("uses %s for %s usage", (periods, fetchPeriod) => {
-		expect(getUsageFetchPeriod(periods)).toBe(fetchPeriod);
-	});
+	] satisfies Array<[KiloUsageDisplayPeriod[], "week" | "month" | "year"]>)(
+		"uses %s for %s usage",
+		(periods, fetchPeriod) => {
+			expect(getUsageFetchPeriod(periods)).toBe(fetchPeriod);
+		},
+	);
 });
 
 describe("sumUsageForDay", () => {
@@ -67,6 +75,25 @@ describe("createUsageRefresher", () => {
 			expect(setStatus).toHaveBeenCalledWith(`kilo-usage-${period}`, expectedStatus);
 		});
 		expect(fetchUsageEntries).toHaveBeenCalledWith(access, fetchPeriod);
+	});
+
+	test("derives mixed periods from one widest-range request", async () => {
+		const fetchUsageEntries = vi.fn().mockResolvedValue([
+			{ date: "2026-08-03", totalCostMicrodollars: 9_000_000 },
+			{ date: "2026-08-15", totalCostMicrodollars: 5_000_000 },
+			{ date: "2026-08-21", totalCostMicrodollars: 2_000_000 },
+			{ date: "2026-08-22", totalCostMicrodollars: 1_000_000 },
+		]);
+		const setStatus = vi.fn();
+		const refresher = createUsageRefresher({ fetchUsageEntries, now: () => today });
+
+		refresher.refresh(access, ["week", "month"], { setStatus, accent: (text) => text });
+
+		await vi.waitFor(() => {
+			expect(setStatus).toHaveBeenCalledWith("kilo-usage-week", "💸 $3.00 this week");
+			expect(setStatus).toHaveBeenCalledWith("kilo-usage-month", "💸 $17.00 this month");
+		});
+		expect(fetchUsageEntries).toHaveBeenCalledWith(access, "month");
 	});
 
 	test("does not fetch usage for an empty period list", () => {
