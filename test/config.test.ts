@@ -22,15 +22,17 @@ test("merges global, project, and environment preferences in precedence order", 
 });
 
 test.each([
-	["KILO_USAGE=day,week", { KILO_USAGE: "day,week" }, ["day", "week"]],
-	["legacy truthy KILO_USAGE", { KILO_USAGE: "true" }, ["day"]],
-	["disabled KILO_USAGE", { KILO_USAGE: "0" }, []],
+	["KILO_PI_USAGE=day,week", { KILO_PI_USAGE: "day,week" }, ["day", "week"]],
+	["legacy truthy KILO_PI_USAGE", { KILO_PI_USAGE: "true" }, ["day"]],
+	["disabled KILO_PI_USAGE", { KILO_PI_USAGE: "0" }, []],
 ])("parses %s", (_name, environment, periods) => {
 	expect(getEnvironmentPreferences(environment).usage?.periods).toEqual(periods);
 });
 
 test("uses defaults for unrecognized boolean environment values", () => {
-	expect(getEnvironmentPreferences({ KILO_CUSTOM_FOOTER: "maybe", KILO_SHOW_CREDITS: "unexpected" })).toMatchObject({
+	expect(
+		getEnvironmentPreferences({ KILO_PI_CUSTOM_FOOTER: "maybe", KILO_PI_SHOW_CREDITS: "unexpected" }),
+	).toMatchObject({
 		footer: { custom: true },
 		credits: { enabled: true },
 	});
@@ -73,7 +75,7 @@ describe("loadKiloPreferences", () => {
 				agentDirectory,
 				cwd,
 				projectTrusted: false,
-				environment: { KILO_SHOW_CREDITS: "true", KILO_CUSTOM_FOOTER: "0", KILO_USAGE: "day,week" },
+				environment: { KILO_PI_SHOW_CREDITS: "true", KILO_PI_CUSTOM_FOOTER: "0", KILO_PI_USAGE: "day,week" },
 			}),
 		).toEqual({ footer: { custom: false }, credits: { enabled: true }, usage: { periods: ["day", "week"] } });
 	});

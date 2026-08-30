@@ -12,7 +12,7 @@ export type FooterContext = {
 export type FooterExtensionAPI = Pick<ExtensionAPI, "getThinkingLevel">;
 
 export function usesCustomFooter(): boolean {
-	const value = process.env.KILO_CUSTOM_FOOTER?.trim().toLowerCase();
+	const value = process.env.KILO_PI_CUSTOM_FOOTER?.trim().toLowerCase();
 	return !["0", "false", "no"].includes(value ?? "");
 }
 
