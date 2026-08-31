@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import type { OAuthLoginCallbacks } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { KILO_API_BASE } from "../src/api.ts";
 import {
@@ -19,6 +20,16 @@ import {
 } from "../src/auth.ts";
 
 const temporaryDirectories: string[] = [];
+
+function loginCallbacks(overrides: Partial<OAuthLoginCallbacks> = {}): OAuthLoginCallbacks {
+	return {
+		onAuth: vi.fn(),
+		onDeviceCode: vi.fn(),
+		onPrompt: vi.fn().mockResolvedValue(""),
+		onSelect: vi.fn().mockResolvedValue(undefined),
+		...overrides,
+	};
+}
 
 afterEach(() => {
 	vi.useRealTimers();
@@ -79,7 +90,7 @@ describe("loginKilo", () => {
 		]);
 		const onProgress = vi.fn();
 		const onAuth = vi.fn();
-		const promise = loginKilo({ onProgress, onAuth });
+		const promise = loginKilo(loginCallbacks({ onProgress, onAuth }));
 		await vi.advanceTimersByTimeAsync(3000);
 		await expect(promise).resolves.toEqual(expect.objectContaining({ access: "token" }));
 		expect(onProgress.mock.calls).toEqual([
@@ -107,7 +118,7 @@ describe("loginKilo", () => {
 		const onProgress = vi.fn();
 		const onSelect = vi.fn().mockResolvedValue("org");
 
-		const promise = loginKilo({ onProgress, onSelect, onAuth: vi.fn() });
+		const promise = loginKilo(loginCallbacks({ onProgress, onSelect }));
 		await vi.advanceTimersByTimeAsync(3000);
 		await vi.advanceTimersByTimeAsync(3000);
 		const credentials = await promise;
@@ -128,7 +139,7 @@ describe("loginKilo", () => {
 			new Response(JSON.stringify({ status: "approved", token: "token" }), { status: 200 }),
 			new Response(JSON.stringify({ organizations: [{ id: "org", name: "Org" }] }), { status: 200 }),
 		]);
-		const promise = loginKilo({ onSelect: vi.fn().mockResolvedValue("personal"), onAuth: vi.fn() });
+		const promise = loginKilo(loginCallbacks({ onSelect: vi.fn().mockResolvedValue("personal") }));
 		await vi.advanceTimersByTimeAsync(3000);
 		await expect(promise).resolves.toEqual(expect.not.objectContaining({ accountId: expect.anything() }));
 	});
@@ -146,7 +157,7 @@ describe("loginKilo", () => {
 				? [new Response(JSON.stringify({ organizations: [] }), { status: 200 })]
 				: []),
 		]);
-		const promise = loginKilo({ onAuth: vi.fn() });
+		const promise = loginKilo(loginCallbacks());
 		const rejection = expect(promise).rejects.toThrow(message);
 		await vi.advanceTimersByTimeAsync(3000);
 		await rejection;
@@ -158,7 +169,7 @@ describe("loginKilo", () => {
 			new Response(JSON.stringify({ code: "code", verificationUrl: "url", expiresIn: 60 }), { status: 200 }),
 		]);
 		const controller = new AbortController();
-		const promise = loginKilo({ signal: controller.signal, onAuth: vi.fn() });
+		const promise = loginKilo(loginCallbacks({ signal: controller.signal }));
 		const rejection = expect(promise).rejects.toThrow("Login cancelled");
 		controller.abort();
 		await rejection;
@@ -170,7 +181,7 @@ describe("loginKilo", () => {
 			new Response(JSON.stringify({ code: "code", verificationUrl: "url", expiresIn: 3 }), { status: 200 }),
 			new Response(null, { status: 202 }),
 		]);
-		const promise = loginKilo({ onAuth: vi.fn() });
+		const promise = loginKilo(loginCallbacks());
 		const rejection = expect(promise).rejects.toThrow("Authentication timed out. Please try again.");
 		await vi.advanceTimersByTimeAsync(3000);
 		await rejection;

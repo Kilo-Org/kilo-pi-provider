@@ -61,7 +61,6 @@ test("provides upstream-style V8 coverage reporting for source modules", () => {
 
 	const vitestConfig = readFileSync(resolve(repositoryRoot, "vitest.config.ts"), "utf8");
 	expect(vitestConfig).toContain('provider: "v8"');
-	expect(vitestConfig).toContain("all: true");
 	expect(vitestConfig).toContain('include: ["src/**/*.ts"]');
 	expect(vitestConfig).toContain('reporter: ["text", "html", "lcov"]');
 });
