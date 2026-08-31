@@ -173,7 +173,7 @@ export async function loginKilo(callbacks: OAuthLoginCallbacks): Promise<OAuthCr
 
 export async function selectKiloOrganization(
 	token: string,
-	callbacks: OAuthLoginCallbacks,
+	callbacks: Partial<Pick<OAuthLoginCallbacks, "onProgress" | "onSelect">>,
 ): Promise<string | undefined> {
 	let profile: KiloProfile;
 	try {
