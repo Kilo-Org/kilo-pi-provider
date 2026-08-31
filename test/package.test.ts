@@ -46,6 +46,13 @@ test("provides the upstream Pi Biome check", () => {
 	});
 });
 
+test("runs typechecking before commits", () => {
+	const prekConfig = readFileSync(resolve(repositoryRoot, "prek.toml"), "utf8");
+	expect(prekConfig).toContain('id = "typecheck"');
+	expect(prekConfig).toContain('entry = "npm run typecheck"');
+	expect(prekConfig).toContain("pass_filenames = false");
+});
+
 test("provides a Prek hook without running it during package installation", () => {
 	expect(packageJson.scripts.prepare).toBeUndefined();
 	expect(packageJson.devDependencies["@j178/prek"]).toBe("0.4.14");
