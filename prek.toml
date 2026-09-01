@@ -7,3 +7,10 @@ name = "Biome"
 language = "system"
 entry = "npm run check"
 pass_filenames = false
+
+[[repos.hooks]]
+id = "typecheck"
+name = "TypeScript"
+language = "system"
+entry = "npm run typecheck"
+pass_filenames = false
