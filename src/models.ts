@@ -176,12 +176,13 @@ export function mapOpenRouterModel(m: OpenRouterModel): ProviderModelConfig {
 	const supportsReasoning = m.supported_parameters?.includes("reasoning") ?? false;
 	const maxTokens =
 		m.top_provider?.max_completion_tokens ?? m.max_completion_tokens ?? Math.ceil(m.context_length * 0.2);
-	const api = shouldUseResponsesApi(m) ? ("openai-responses" as const) : undefined;
+	const api = shouldUseResponsesApi(m) ? ("openai-responses" as const) : ("openai-completions" as const);
 
 	return {
 		id: m.id,
 		name: m.name,
-		...(api ? { api, baseUrl: KILO_OPENROUTER_BASE } : {}),
+		api,
+		...(api === "openai-responses" ? { baseUrl: KILO_OPENROUTER_BASE } : {}),
 		reasoning: supportsReasoning,
 		input: supportsImages ? ["text", "image"] : ["text"],
 		cost: {

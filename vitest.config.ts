@@ -8,6 +8,9 @@ export default defineConfig({
 			exclude: ["src/**/*.d.ts"],
 			reporter: ["text", "html", "lcov"],
 			reportsDirectory: "coverage",
+			thresholds: {
+				"src/responses.ts": { 100: true },
+			},
 		},
 	},
 });

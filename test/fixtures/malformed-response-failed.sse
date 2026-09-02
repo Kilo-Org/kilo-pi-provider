@@ -1,0 +1,16 @@
+event: response.created
+data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_test","status":"in_progress"}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"type":"message","id":"msg_test","status":"in_progress","role":"assistant","content":[],"phase":"final_answer"}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":2,"item_id":"msg_test","output_index":0,"content_index":0,"delta":"OK","logprobs":[]}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","sequence_number":3,"output_index":0,"item":{"type":"message","id":"msg_test","status":"completed","role":"assistant","content":[{"type":"output_text","text":"OK","annotations":[],"logprobs":[]}],"phase":"final_answer"}}
+
+event: response.failed
+data: {"type":"response.failed","sequence_number":4,"response":{"id":"resp_test","status":"failed","error":{"type":"server_error","message":"An error occurred"},"output":[]}}
+
+: stream closed
