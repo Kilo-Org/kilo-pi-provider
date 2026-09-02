@@ -156,10 +156,13 @@ test("registers anonymous free models from the Kilo catalog", async () => {
 		expect.objectContaining({
 			baseUrl: "https://api.kilo.ai/api/gateway",
 			apiKey: "$KILO_API_KEY",
+			api: "openai-responses",
+			streamSimple: expect.any(Function),
 			models: [
 				expect.objectContaining({
 					id: "acme/code-model:free",
 					name: "Acme Code Model",
+					api: "openai-completions",
 					reasoning: true,
 					input: ["text"],
 					contextWindow: 128_000,

@@ -31,6 +31,7 @@ import {
 } from "./auth.ts";
 import { loadKiloPreferences } from "./config.ts";
 import { installCustomFooter } from "./footer.ts";
+import { streamKiloResponses } from "./responses.ts";
 
 import { createUsageRefresher } from "./usage.ts";
 
@@ -105,7 +106,10 @@ async function fetchKiloModels(options?: {
 const KILO_PROVIDER_CONFIG = {
 	baseUrl: KILO_GATEWAY_BASE,
 	apiKey: "$KILO_API_KEY",
-	api: "openai-completions" as const,
+	// Pi applies a custom streamSimple only to models whose API matches this one.
+	// mapOpenRouterModel assigns both Responses and chat-completions APIs explicitly.
+	api: "openai-responses" as const,
+	streamSimple: streamKiloResponses,
 	headers: {
 		"X-KILOCODE-EDITORNAME": "Pi",
 		"User-Agent": "pi-kilo-provider",

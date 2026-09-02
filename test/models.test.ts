@@ -16,6 +16,19 @@ const modelWithGatewayVariants: OpenRouterModel = {
 };
 
 describe("mapOpenRouterModel", () => {
+	test("routes OpenAI models to Responses and other models to chat completions", () => {
+		const completionsModel = mapOpenRouterModel(modelWithGatewayVariants);
+		const responsesModel = mapOpenRouterModel({
+			...modelWithGatewayVariants,
+			opencode: { ...modelWithGatewayVariants.opencode, ai_sdk_provider: "openai" },
+		});
+
+		expect(completionsModel.api).toBe("openai-completions");
+		expect(completionsModel.baseUrl).toBeUndefined();
+		expect(responsesModel.api).toBe("openai-responses");
+		expect(responsesModel.baseUrl).toBe("https://api.kilo.ai/api/openrouter");
+	});
+
 	test("maps gateway thinking variants", () => {
 		expect(mapOpenRouterModel(modelWithGatewayVariants).thinkingLevelMap).toEqual({
 			off: "none",

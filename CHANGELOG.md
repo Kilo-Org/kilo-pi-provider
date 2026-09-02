@@ -6,6 +6,10 @@ Release versions use calendar versioning: `YYYY.MM.PATCH`. `PATCH` starts at `0`
 
 ## [Unreleased]
 
+### Fixed
+
+- Classify malformed Kilo Responses failures that provide `error.type` without the required `error.code`.
+
 ## [2026.08.2] - 2026-08-30
 
 ### Breaking Changes
