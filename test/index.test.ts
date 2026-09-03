@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import kiloExtension, { parsePrice } from "../src/index.ts";
+import kiloExtension, { type KiloExtensionApi, parsePrice } from "../src/index.ts";
 
 const temporaryDirectories: string[] = [];
 let agentDirectory: string;
@@ -18,6 +18,7 @@ beforeEach(() => {
 	vi.stubEnv("KILO_PI_CUSTOM_FOOTER", "0");
 	vi.stubEnv("KILO_PI_SHOW_CREDITS", "");
 	vi.stubEnv("KILO_PI_USAGE", "");
+	vi.stubEnv("KILO_PI_SHOW_FOR_OTHER_PROVIDERS", "");
 });
 
 afterEach(() => {
@@ -73,13 +74,10 @@ async function customFooterWasInstalled(customFooter: string): Promise<boolean> 
 
 	const on = vi.fn();
 	const setFooter = vi.fn();
-	await kiloExtension({ registerProvider: vi.fn(), on } as never);
+	await kiloExtension(extensionApi(vi.fn(), on));
 
-	const sessionStartHandlers = on.mock.calls
-		.filter(([event]) => event === "session_start")
-		.map(([, handler]) => handler as (event: unknown, context: unknown) => Promise<void>);
-	const context = { hasUI: true, ui: { setFooter, setStatus: vi.fn() } };
-	await Promise.all(sessionStartHandlers.map((handler) => handler({}, context)));
+	const context = { model: { provider: "kilo" }, hasUI: true, ui: { setFooter, setStatus: vi.fn() } };
+	await Promise.all(handlers(on, "session_start").map((run) => run({}, context)));
 
 	return setFooter.mock.calls.length > 0;
 }
@@ -90,6 +88,59 @@ test("does not install the custom footer when disabled", async () => {
 
 test("installs the custom footer by default", async () => {
 	await expect(customFooterWasInstalled("")).resolves.toBe(true);
+});
+
+test("hides ambient Kilo UI at startup for another provider", async () => {
+	const runtime = createRuntime({ apiKey: "api-key", provider: "other" });
+	vi.stubEnv("KILO_PI_CUSTOM_FOOTER", "1");
+	vi.stubEnv("KILO_PI_USAGE", "day");
+
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
+	await Promise.all(handlers(runtime.on, "session_start").map((run) => run({}, runtime.context)));
+
+	expect(runtime.context.ui.setFooter).not.toHaveBeenCalled();
+	for (const key of ["kilo-credits", "kilo-usage-day", "kilo-usage-week", "kilo-usage-month", "kilo-usage-year"]) {
+		expect(runtime.setStatus).toHaveBeenCalledWith(key, undefined);
+	}
+	expect(runtime.fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/models"))).toHaveLength(2);
+	expect(runtime.fetchMock.mock.calls.some(([url]) => String(url).endsWith("/balance"))).toBe(false);
+	expect(runtime.fetchMock.mock.calls.some(([url]) => String(url).includes("/usage?"))).toBe(false);
+});
+
+test("model selection hides and restores ambient Kilo UI", async () => {
+	const runtime = createRuntime({ apiKey: "api-key" });
+	vi.stubEnv("KILO_PI_CUSTOM_FOOTER", "1");
+
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
+	await Promise.all(handlers(runtime.on, "session_start").map((run) => run({}, runtime.context)));
+	expect(runtime.context.ui.setFooter).toHaveBeenLastCalledWith(expect.any(Function));
+
+	runtime.context.model.provider = "other";
+	await handler(runtime.on, "model_select")({ model: { provider: "other" } }, runtime.context);
+	expect(runtime.context.ui.setFooter).toHaveBeenLastCalledWith(undefined);
+	expect(runtime.setStatus).toHaveBeenCalledWith("kilo-credits", undefined);
+
+	runtime.context.model.provider = "kilo";
+	await handler(runtime.on, "model_select")({ model: { provider: "kilo" } }, runtime.context);
+	expect(runtime.context.ui.setFooter).toHaveBeenLastCalledWith(expect.any(Function));
+	expect(runtime.setStatus).toHaveBeenLastCalledWith("kilo-credits", "💰 $12.34");
+});
+
+test("selecting a Kilo model immediately restores configured usage status", async () => {
+	vi.stubEnv("KILO_PI_USAGE", "day");
+	const runtime = createRuntime({
+		apiKey: "api-key",
+		provider: "other",
+		usage: { usage: [{ date: new Date().toISOString().slice(0, 10), total_cost: 4_000_000 }] },
+	});
+
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
+	runtime.context.model.provider = "kilo";
+	await handler(runtime.on, "model_select")({ model: { provider: "kilo" } }, runtime.context);
+
+	await vi.waitFor(() => {
+		expect(runtime.setStatus).toHaveBeenCalledWith("kilo-usage-day", "💸 $4.00 today");
+	});
 });
 
 test("exposes Kilo credits when the custom footer is disabled", async () => {
@@ -109,17 +160,15 @@ test("exposes Kilo credits when the custom footer is disabled", async () => {
 
 	const on = vi.fn();
 	const setStatus = vi.fn();
-	await kiloExtension({ registerProvider: vi.fn(), on } as never);
+	await kiloExtension(extensionApi(vi.fn(), on));
 
-	const sessionStartHandlers = on.mock.calls
-		.filter(([event]) => event === "session_start")
-		.map(([, handler]) => handler as (event: unknown, context: unknown) => Promise<void>);
 	const context = {
+		model: { provider: "kilo" },
 		hasUI: true,
 		ui: { setFooter: vi.fn(), setStatus, theme: { fg: vi.fn((_tone, text) => text) } },
 		modelRegistry: { registerProvider: vi.fn() },
 	};
-	await Promise.all(sessionStartHandlers.map((handler) => handler({}, context)));
+	await Promise.all(handlers(on, "session_start").map((run) => run({}, context)));
 
 	expect(setStatus).toHaveBeenCalledWith("kilo-credits", "💰 $12.34");
 	expect(context.ui.setFooter).not.toHaveBeenCalled();
@@ -131,7 +180,7 @@ test("does not fetch or display credits when KILO_PI_SHOW_CREDITS is disabled", 
 	mkdirSync(configDirectory, { recursive: true });
 	writeFileSync(join(configDirectory, "config.json"), JSON.stringify({ credits: { enabled: false } }));
 
-	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
 	await handler(runtime.on, "session_start")({}, runtime.context);
 	await handler(runtime.on, "model_select")({ model: { provider: "kilo" } }, runtime.context);
 	await handler(runtime.on, "turn_end")({}, runtime.context);
@@ -147,7 +196,7 @@ test("registers anonymous free models from the Kilo catalog", async () => {
 	const registerProvider = vi.fn();
 	const on = vi.fn();
 
-	await kiloExtension({ registerProvider, on } as never);
+	await kiloExtension(extensionApi(registerProvider, on));
 
 	expect(fetchMock).toHaveBeenCalledOnce();
 	expect(fetchMock.mock.calls[0]?.[0]).toBe("https://api.kilo.ai/api/gateway/models");
@@ -181,7 +230,7 @@ test("loads the organization catalog with stored OAuth credentials", async () =>
 	const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(catalogResponse());
 	vi.stubGlobal("fetch", fetchMock);
 
-	await kiloExtension({ registerProvider: vi.fn(), on: vi.fn() } as never);
+	await kiloExtension(extensionApi(vi.fn(), vi.fn()));
 
 	expect(fetchMock).toHaveBeenCalledOnce();
 	expect(fetchMock).toHaveBeenCalledWith(
@@ -203,7 +252,7 @@ test("loads the organization catalog with KILO_API_KEY", async () => {
 	const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(catalogResponse());
 	vi.stubGlobal("fetch", fetchMock);
 
-	await kiloExtension({ registerProvider: vi.fn(), on: vi.fn() } as never);
+	await kiloExtension(extensionApi(vi.fn(), vi.fn()));
 
 	expect(fetchMock).toHaveBeenCalledOnce();
 	expect(fetchMock).toHaveBeenCalledWith(
@@ -219,10 +268,27 @@ test("loads the organization catalog with KILO_API_KEY", async () => {
 
 type ExtensionHandler = (event: unknown, context: unknown) => Promise<unknown>;
 
-function handler(on: ReturnType<typeof vi.fn>, event: string): ExtensionHandler {
-	const registered = on.mock.calls.find(([name]) => name === event)?.[1] as ExtensionHandler | undefined;
+type ExtensionOn = ReturnType<typeof vi.fn>;
+type RegisterProvider = ReturnType<typeof vi.fn>;
+
+function extensionApi(registerProvider: RegisterProvider, on: ExtensionOn): KiloExtensionApi {
+	// SAFETY: these spies implement the extension methods used during initialization; calls are verified by the tests.
+	return { registerProvider, on, getThinkingLevel: vi.fn() } as KiloExtensionApi;
+}
+
+function extensionHandler(run: ReturnType<typeof vi.fn>): ExtensionHandler {
+	// SAFETY: every recorded second argument comes from pi.on and is therefore an extension event handler.
+	return run as ExtensionHandler;
+}
+
+function handlers(on: ExtensionOn, event: string): ExtensionHandler[] {
+	return on.mock.calls.filter(([name]) => name === event).map(([, run]) => extensionHandler(run));
+}
+
+function handler(on: ExtensionOn, event: string): ExtensionHandler {
+	const registered = on.mock.calls.find(([name]) => name === event)?.[1];
 	if (!registered) throw new Error(`${event} handler not registered`);
-	return registered;
+	return extensionHandler(registered);
 }
 
 function createRuntime(
@@ -231,39 +297,65 @@ function createRuntime(
 		apiKey?: string;
 		organizationId?: string;
 		balance?: number;
+		balanceResponse?: Promise<Response>;
+		sessionCatalogResponse?: Promise<Response>;
 		usage?: unknown;
 		usageResponse?: Promise<Response>;
+		provider?: string;
 	} = {},
 ) {
 	if (options.auth) setAuth(options.auth);
 	vi.stubEnv("KILO_API_KEY", options.apiKey ?? "");
 	vi.stubEnv("KILO_ORG_ID", options.organizationId ?? "");
+	let catalogRequestCount = 0;
 	const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (input) => {
 		const url = String(input);
 		if (url.endsWith("/balance")) {
-			return new Response(JSON.stringify({ balance: options.balance ?? 12.34 }), { status: 200 });
+			return (
+				options.balanceResponse ??
+				new Response(JSON.stringify({ balance: options.balance ?? 12.34 }), { status: 200 })
+			);
 		}
 		if (url.includes("/usage?")) {
 			return options.usageResponse ?? new Response(JSON.stringify(options.usage ?? { usage: [] }), { status: 200 });
 		}
+		catalogRequestCount += 1;
+		if (catalogRequestCount === 2 && options.sessionCatalogResponse) return options.sessionCatalogResponse;
 		return catalogResponse();
 	});
 	vi.stubGlobal("fetch", fetchMock);
 	const on = vi.fn();
 	const setStatus = vi.fn();
 	const context = {
+		model: { provider: options.provider ?? "kilo" },
 		hasUI: true,
-		ui: { setStatus, theme: { fg: vi.fn((_tone, text) => text) } },
+		ui: { setFooter: vi.fn(), setStatus, theme: { fg: vi.fn((_tone, text) => text) } },
 		modelRegistry: { registerProvider: vi.fn() },
 	};
 
 	return { context, fetchMock, on, setStatus };
 }
 
+test("session_start does not request balance after switching away during catalog refresh", async () => {
+	const sessionCatalogResponse = deferred<Response>();
+	const runtime = createRuntime({ apiKey: "api-key", sessionCatalogResponse: sessionCatalogResponse.promise });
+
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
+	const sessionStart = handler(runtime.on, "session_start")({}, runtime.context);
+	await vi.waitFor(() => expect(runtime.fetchMock).toHaveBeenCalledTimes(2));
+
+	runtime.context.model.provider = "other";
+	await handler(runtime.on, "model_select")({ model: { provider: "other" } }, runtime.context);
+	sessionCatalogResponse.resolve(catalogResponse());
+	await sessionStart;
+
+	expect(runtime.fetchMock.mock.calls.some(([url]) => String(url).endsWith("/balance"))).toBe(false);
+});
+
 test("session_start refreshes the API-key catalog and credits", async () => {
 	const runtime = createRuntime({ apiKey: "api-key", organizationId: "org-id" });
 
-	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
 	await handler(runtime.on, "session_start")({}, runtime.context);
 
 	expect(runtime.fetchMock.mock.calls).toEqual([
@@ -305,7 +397,7 @@ test.each([
 ])("%s refreshes API-key credits", async (event, payload) => {
 	const runtime = createRuntime({ apiKey: "api-key", organizationId: "org-id" });
 
-	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
 	await handler(runtime.on, event)(payload, runtime.context);
 
 	expect(runtime.fetchMock.mock.calls[1]).toEqual([
@@ -324,7 +416,7 @@ test.each([
 test.each([
 	["session_start", {}, {}, {}, 1, "kilo-credits"],
 	["session_start", {}, { apiKey: "api-key" }, { hasUI: false }, 2, undefined],
-	["model_select", { model: { provider: "other" } }, { apiKey: "api-key" }, {}, 1, undefined],
+	["model_select", { model: { provider: "other" } }, { apiKey: "api-key" }, {}, 1, "kilo-credits"],
 	["turn_end", {}, { apiKey: "api-key" }, { hasUI: false }, 1, undefined],
 ])(
 	"%s skips credit work when access, UI, or Kilo model requirements are unmet",
@@ -332,7 +424,7 @@ test.each([
 		const runtime = createRuntime(runtimeOptions);
 		const context = { ...runtime.context, ...contextOverrides };
 
-		await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+		await kiloExtension(extensionApi(vi.fn(), runtime.on));
 		await handler(runtime.on, event)(payload, context);
 
 		expect(runtime.fetchMock).toHaveBeenCalledTimes(expectedFetchCount);
@@ -362,7 +454,7 @@ test.each([
 ])("before_agent_start handles %s Kilo access", async (_name, auth, apiKey, expected) => {
 	const runtime = createRuntime({ auth, apiKey });
 
-	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
 	const beforeAgentStart = handler(runtime.on, "before_agent_start");
 	await expect(beforeAgentStart({}, { model: { provider: "kilo" } })).resolves.toEqual(expected);
 	await expect(beforeAgentStart({}, { model: { provider: "kilo" } })).resolves.toBeUndefined();
@@ -371,7 +463,7 @@ test.each([
 test("does not request usage or set a usage status by default", async () => {
 	const runtime = createRuntime({ apiKey: "api-key" });
 
-	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
 	await handler(runtime.on, "session_start")({}, runtime.context);
 	await handler(runtime.on, "turn_end")({}, runtime.context);
 
@@ -386,13 +478,35 @@ test.each(["1", "true", "yes", "day"])("%s enables daily usage status refreshes"
 		usage: { usage: [{ date: new Date().toISOString().slice(0, 10), total_cost: 1_234_567 }] },
 	});
 
-	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
 	await handler(runtime.on, "session_start")({}, runtime.context);
 
 	await vi.waitFor(() => {
 		expect(runtime.setStatus).toHaveBeenCalledWith("kilo-usage-day", "💸 $1.23 today");
 	});
 	expect(runtime.fetchMock.mock.calls.some(([url]) => String(url).includes("/usage?period=week"))).toBe(true);
+});
+
+test("turn_end skips ambient API calls for another provider", async () => {
+	vi.stubEnv("KILO_PI_USAGE", "day");
+	const runtime = createRuntime({ apiKey: "api-key", provider: "other" });
+
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
+	await handler(runtime.on, "turn_end")({}, runtime.context);
+
+	expect(runtime.fetchMock).toHaveBeenCalledTimes(1);
+	expect(runtime.setStatus).not.toHaveBeenCalled();
+});
+
+test("the display override keeps turn-related ambient API calls enabled", async () => {
+	vi.stubEnv("KILO_PI_SHOW_FOR_OTHER_PROVIDERS", "1");
+	vi.stubEnv("KILO_PI_USAGE", "day");
+	const runtime = createRuntime({ apiKey: "api-key", provider: "other" });
+
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
+	await handler(runtime.on, "turn_end")({}, runtime.context);
+
+	await vi.waitFor(() => expect(runtime.fetchMock).toHaveBeenCalledTimes(3));
 });
 
 test("turn_end schedules an enabled daily usage refresh", async () => {
@@ -402,7 +516,7 @@ test("turn_end schedules an enabled daily usage refresh", async () => {
 		usage: { usage: [{ date: new Date().toISOString().slice(0, 10), total_cost: 2_000_000 }] },
 	});
 
-	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
 	await handler(runtime.on, "turn_end")({}, runtime.context);
 
 	await vi.waitFor(() => {
@@ -410,12 +524,46 @@ test("turn_end schedules an enabled daily usage refresh", async () => {
 	});
 });
 
+test("switching providers prevents an in-flight balance refresh from republishing status", async () => {
+	const balanceResponse = deferred<Response>();
+	const runtime = createRuntime({ apiKey: "api-key", balanceResponse: balanceResponse.promise });
+
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
+	const turnEnd = handler(runtime.on, "turn_end")({}, runtime.context);
+	runtime.context.model.provider = "other";
+	await handler(runtime.on, "model_select")({ model: { provider: "other" } }, runtime.context);
+
+	balanceResponse.resolve(new Response(JSON.stringify({ balance: 99.99 }), { status: 200 }));
+	await turnEnd;
+	expect(runtime.setStatus).not.toHaveBeenCalledWith("kilo-credits", "💰 $99.99");
+});
+
+test("switching providers prevents an in-flight usage refresh from republishing status", async () => {
+	vi.stubEnv("KILO_PI_USAGE", "day");
+	const usageResponse = deferred<Response>();
+	const runtime = createRuntime({ apiKey: "api-key", usageResponse: usageResponse.promise });
+
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
+	await handler(runtime.on, "turn_end")({}, runtime.context);
+	runtime.context.model.provider = "other";
+	await handler(runtime.on, "model_select")({ model: { provider: "other" } }, runtime.context);
+
+	usageResponse.resolve(
+		new Response(
+			JSON.stringify({ usage: [{ date: new Date().toISOString().slice(0, 10), total_cost: 3_000_000 }] }),
+			{ status: 200 },
+		),
+	);
+	await new Promise<void>((resolve) => setImmediate(resolve));
+	expect(runtime.setStatus).not.toHaveBeenCalledWith("kilo-usage-day", "💸 $3.00 today");
+});
+
 test("turn_end does not wait for an enabled usage response", async () => {
 	vi.stubEnv("KILO_PI_USAGE", "day");
 	const usageResponse = deferred<Response>();
 	const runtime = createRuntime({ apiKey: "api-key", usageResponse: usageResponse.promise });
 
-	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
 	await expect(handler(runtime.on, "turn_end")({}, runtime.context)).resolves.toBeUndefined();
 	expect(runtime.fetchMock.mock.calls.some(([url]) => String(url).includes("/usage?"))).toBe(true);
 
@@ -433,7 +581,7 @@ test("turn_end does not wait for an enabled usage response", async () => {
 test("before_agent_start does not consume the notice for another provider", async () => {
 	const runtime = createRuntime();
 
-	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
 	const beforeAgentStart = handler(runtime.on, "before_agent_start");
 	await expect(beforeAgentStart({}, { model: { provider: "other" } })).resolves.toBeUndefined();
 	await expect(beforeAgentStart({}, { model: { provider: "kilo" } })).resolves.toMatchObject({

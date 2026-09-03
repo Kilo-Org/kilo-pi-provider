@@ -14,7 +14,7 @@ import { isFreeModel, mapOpenRouterModel, type OpenRouterModel, parsePrice } fro
 
 export { parsePrice };
 
-import type { ExtensionAPI, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import {
 	fetchKiloBalance,
 	fetchKiloUsageEntries,
@@ -42,6 +42,13 @@ import { createUsageRefresher } from "./usage.ts";
 const KILO_GATEWAY_BASE = `${KILO_API_BASE}/api/gateway`;
 const MODELS_FETCH_TIMEOUT_MS = 10_000;
 const KILO_TOS_URL = "https://kilo.ai/terms";
+const KILO_STATUS_KEYS = [
+	"kilo-credits",
+	"kilo-usage-day",
+	"kilo-usage-week",
+	"kilo-usage-month",
+	"kilo-usage-year",
+] as const;
 
 function formatCredits(balance: number): string {
 	if (balance >= 1000) {
@@ -127,9 +134,45 @@ function makeProviderConfig(organizationId?: string) {
 // Extension Entry Point
 // =============================================================================
 
-export default async function (pi: ExtensionAPI) {
+export type KiloExtensionApi = Pick<ExtensionAPI, "getThinkingLevel" | "on" | "registerProvider">;
+
+export default async function (pi: KiloExtensionApi) {
 	const startupAccess = getKiloAccess();
 	let preferences = loadKiloPreferences({ cwd: process.cwd(), projectTrusted: false });
+
+	let kiloFooterInstalled = false;
+	let ambientUiRevision = 0;
+	const shouldShowAmbientKiloUi = (provider: string | undefined): boolean =>
+		provider === "kilo" || preferences.display.showForOtherProviders;
+
+	const clearAmbientKiloStatuses = (ctx: ExtensionContext): void => {
+		for (const key of KILO_STATUS_KEYS) ctx.ui.setStatus(key, undefined);
+	};
+
+	const reconcileAmbientKiloUi = (ctx: ExtensionContext, provider: string | undefined): boolean => {
+		ambientUiRevision += 1;
+		const visible = shouldShowAmbientKiloUi(provider);
+		if (!ctx.hasUI) return visible;
+
+		if (visible && preferences.footer.custom && !kiloFooterInstalled) {
+			installCustomFooter(pi, ctx, preferences.credits.enabled);
+			kiloFooterInstalled = true;
+		} else if ((!visible || !preferences.footer.custom) && kiloFooterInstalled) {
+			ctx.ui.setFooter(undefined);
+			kiloFooterInstalled = false;
+		}
+
+		if (!visible) {
+			usageRefresher.invalidate();
+			clearAmbientKiloStatuses(ctx);
+		}
+		return visible;
+	};
+
+	const publishCredits = (ctx: ExtensionContext, balance: number, revision: number): void => {
+		if (revision !== ambientUiRevision || !shouldShowAmbientKiloUi(ctx.model?.provider)) return;
+		ctx.ui.setStatus("kilo-credits", ctx.ui.theme.fg("accent", `💰 ${formatCredits(balance)}`));
+	};
 
 	// Fetch models at load time so the provider is immediately usable for
 	// --list-models, --model selection, and print mode before session_start fires.
@@ -223,6 +266,8 @@ export default async function (pi: ExtensionAPI) {
 		});
 		const access = getKiloAccess();
 		const usagePeriods = preferences.usage.periods;
+		const showAmbientUi = reconcileAmbientKiloUi(ctx, ctx.model?.provider);
+		const sessionStartRevision = ambientUiRevision;
 
 		// Clear a stale credit status after logout when an interactive UI is available.
 		if (!access) {
@@ -230,7 +275,7 @@ export default async function (pi: ExtensionAPI) {
 			return;
 		}
 
-		if (ctx.hasUI && usagePeriods.length > 0) {
+		if (showAmbientUi && ctx.hasUI && usagePeriods.length > 0) {
 			usageRefresher.refresh(access, usagePeriods, {
 				setStatus: (key, value) => ctx.ui.setStatus(key, value),
 				accent: (text) => ctx.ui.theme.fg("accent", text),
@@ -259,34 +304,41 @@ export default async function (pi: ExtensionAPI) {
 		}
 
 		// Fetch and display credits balance when enabled and an interactive UI is available.
-		if (ctx.hasUI && preferences.credits.enabled) {
+		const ambientUiIsCurrent =
+			sessionStartRevision === ambientUiRevision && shouldShowAmbientKiloUi(ctx.model?.provider);
+		if (showAmbientUi && ambientUiIsCurrent && ctx.hasUI && preferences.credits.enabled) {
+			const revision = ambientUiRevision;
 			try {
 				const balance = await fetchKiloBalance(access.token, access.organizationId);
-				if (balance !== null) {
-					const theme = ctx.ui.theme;
-					ctx.ui.setStatus("kilo-credits", theme.fg("accent", `💰 ${formatCredits(balance)}`));
-				}
+				if (balance !== null) publishCredits(ctx, balance, revision);
 			} catch (error) {
 				console.warn("[kilo] Failed to fetch balance:", error instanceof Error ? error.message : error);
 			}
 		}
 	});
 
-	// Update credits display when model changes to a Kilo model
+	// Reconcile and refresh ambient Kilo UI when the selected model changes.
 	pi.on("model_select", async (event, ctx) => {
-		if (event.model?.provider !== "kilo") return;
+		if (!reconcileAmbientKiloUi(ctx, event.model.provider)) return;
+		if (event.model.provider !== "kilo" && !preferences.display.showForOtherProviders) return;
 
 		const access = getKiloAccess();
-		if (!access) return;
+		if (!access || !ctx.hasUI) return;
 
-		if (!ctx.hasUI || !preferences.credits.enabled) return;
+		const usagePeriods = preferences.usage.periods;
+		if (usagePeriods.length > 0) {
+			usageRefresher.refresh(access, usagePeriods, {
+				setStatus: (key, value) => ctx.ui.setStatus(key, value),
+				accent: (text) => ctx.ui.theme.fg("accent", text),
+			});
+		}
 
+		if (!preferences.credits.enabled) return;
+
+		const revision = ambientUiRevision;
 		try {
 			const balance = await fetchKiloBalance(access.token, access.organizationId);
-			if (balance !== null) {
-				const theme = ctx.ui.theme;
-				ctx.ui.setStatus("kilo-credits", theme.fg("accent", `💰 ${formatCredits(balance)}`));
-			}
+			if (balance !== null) publishCredits(ctx, balance, revision);
 		} catch (error) {
 			console.warn(
 				"[kilo] Failed to fetch balance on model select:",
@@ -297,6 +349,8 @@ export default async function (pi: ExtensionAPI) {
 
 	// Refresh credits and opt-in usage after each turn.
 	pi.on("turn_end", async (_event, ctx) => {
+		if (!shouldShowAmbientKiloUi(ctx.model?.provider)) return;
+
 		const access = getKiloAccess();
 		const usagePeriods = preferences.usage.periods;
 		if (!access || !ctx.hasUI) return;
@@ -310,12 +364,10 @@ export default async function (pi: ExtensionAPI) {
 
 		if (!preferences.credits.enabled) return;
 
+		const revision = ambientUiRevision;
 		try {
 			const balance = await fetchKiloBalance(access.token, access.organizationId);
-			if (balance !== null) {
-				const theme = ctx.ui.theme;
-				ctx.ui.setStatus("kilo-credits", theme.fg("accent", `💰 ${formatCredits(balance)}`));
-			}
+			if (balance !== null) publishCredits(ctx, balance, revision);
 		} catch (error) {
 			console.warn("[kilo] Failed to fetch balance on turn end:", error instanceof Error ? error.message : error);
 		}
@@ -342,9 +394,5 @@ export default async function (pi: ExtensionAPI) {
 				display: true,
 			},
 		};
-	});
-
-	pi.on("session_start", async (_event, ctx) => {
-		if (preferences.footer.custom) installCustomFooter(pi, ctx, preferences.credits.enabled);
 	});
 }

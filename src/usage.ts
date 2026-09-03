@@ -104,6 +104,10 @@ export function createUsageRefresher(options: UsageRefresherOptions) {
 	}
 
 	return {
+		invalidate(): void {
+			revision += 1;
+			queued = undefined;
+		},
 		refresh(access: KiloAccess, periods: KiloUsageDisplayPeriod[], presentation: UsageStatusPresentation): void {
 			if (periods.length === 0) return;
 
