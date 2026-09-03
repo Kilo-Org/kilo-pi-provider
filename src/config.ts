@@ -7,6 +7,7 @@ import Value from "typebox/value";
 export const KILO_USAGE_PERIODS = ["day", "week", "month", "year"] as const;
 export type KiloUsageDisplayPeriod = (typeof KILO_USAGE_PERIODS)[number];
 
+const DisplayPreferences = Type.Object({ showForOtherProviders: Type.Optional(Type.Boolean()) });
 const FooterPreferences = Type.Object({ custom: Type.Optional(Type.Boolean()) });
 const CreditsPreferences = Type.Object({ enabled: Type.Optional(Type.Boolean()) });
 const UsagePreferences = Type.Object({
@@ -16,12 +17,14 @@ const UsagePreferences = Type.Object({
 const PreferencesRoot = Type.Object({});
 
 export type KiloPreferences = {
+	display?: Type.Static<typeof DisplayPreferences>;
 	footer?: Type.Static<typeof FooterPreferences>;
 	credits?: Type.Static<typeof CreditsPreferences>;
 	usage?: Type.Static<typeof UsagePreferences>;
 };
 
 export type ResolvedKiloPreferences = {
+	display: { showForOtherProviders: boolean };
 	footer: { custom: boolean };
 	credits: { enabled: boolean };
 	usage: { periods: KiloUsageDisplayPeriod[] };
@@ -29,6 +32,7 @@ export type ResolvedKiloPreferences = {
 
 const CONFIG_DIRECTORY = "kilo-pi-provider";
 const DEFAULT_PREFERENCES: ResolvedKiloPreferences = {
+	display: { showForOtherProviders: false },
 	footer: { custom: true },
 	credits: { enabled: true },
 	usage: { periods: [] },
@@ -44,12 +48,18 @@ function readKiloPreferences(path: string): KiloPreferences {
 		const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
 		if (!Value.Check(PreferencesRoot, parsed)) return {};
 
+		const display =
+			"display" in parsed && Value.Check(DisplayPreferences, parsed.display) ? parsed.display : undefined;
 		const footer = "footer" in parsed && Value.Check(FooterPreferences, parsed.footer) ? parsed.footer : undefined;
 		const credits =
 			"credits" in parsed && Value.Check(CreditsPreferences, parsed.credits) ? parsed.credits : undefined;
 		const usage = "usage" in parsed && Value.Check(UsagePreferences, parsed.usage) ? parsed.usage : undefined;
 
 		return {
+			display:
+				display?.showForOtherProviders === undefined
+					? undefined
+					: { showForOtherProviders: display.showForOtherProviders },
 			footer: footer?.custom === undefined ? undefined : { custom: footer.custom },
 			credits: credits?.enabled === undefined ? undefined : { enabled: credits.enabled },
 			usage: usage?.periods === undefined ? undefined : { periods: usage.periods },
@@ -87,6 +97,9 @@ function environmentUsagePeriods(value: string | undefined): KiloUsageDisplayPer
 
 export function getEnvironmentPreferences(environment: NodeJS.ProcessEnv = process.env): KiloPreferences {
 	return {
+		display: {
+			showForOtherProviders: environmentBoolean(environment.KILO_PI_SHOW_FOR_OTHER_PROVIDERS, false),
+		},
 		footer: { custom: environmentBoolean(environment.KILO_PI_CUSTOM_FOOTER, true) },
 		credits: { enabled: environmentBoolean(environment.KILO_PI_SHOW_CREDITS, true) },
 		usage: { periods: environmentUsagePeriods(environment.KILO_PI_USAGE) },
@@ -99,6 +112,13 @@ export function mergeKiloPreferences(
 	environment: KiloPreferences,
 ): ResolvedKiloPreferences {
 	return {
+		display: {
+			showForOtherProviders:
+				environment.display?.showForOtherProviders ??
+				project?.display?.showForOtherProviders ??
+				global.display?.showForOtherProviders ??
+				DEFAULT_PREFERENCES.display.showForOtherProviders,
+		},
 		footer: {
 			custom:
 				environment.footer?.custom ??

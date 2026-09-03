@@ -18,7 +18,12 @@ test("merges global, project, and environment preferences in precedence order", 
 			{ credits: { enabled: true } },
 			{ credits: { enabled: false }, usage: { periods: ["day", "month"] } },
 		),
-	).toEqual({ footer: { custom: false }, credits: { enabled: false }, usage: { periods: ["day", "month"] } });
+	).toEqual({
+		display: { showForOtherProviders: false },
+		footer: { custom: false },
+		credits: { enabled: false },
+		usage: { periods: ["day", "month"] },
+	});
 });
 
 test("hides ambient Kilo UI for other providers by default", () => {
@@ -72,6 +77,7 @@ describe("loadKiloPreferences", () => {
 		writeConfig(join(cwd, ".pi"), { credits: { enabled: true }, usage: { periods: ["day", "month"] } });
 
 		expect(loadKiloPreferences({ agentDirectory, cwd, projectTrusted: true, environment: {} })).toEqual({
+			display: { showForOtherProviders: false },
 			footer: { custom: true },
 			credits: { enabled: true },
 			usage: { periods: ["day", "month"] },
@@ -91,7 +97,12 @@ describe("loadKiloPreferences", () => {
 				projectTrusted: false,
 				environment: { KILO_PI_SHOW_CREDITS: "true", KILO_PI_CUSTOM_FOOTER: "0", KILO_PI_USAGE: "day,week" },
 			}),
-		).toEqual({ footer: { custom: false }, credits: { enabled: true }, usage: { periods: ["day", "week"] } });
+		).toEqual({
+			display: { showForOtherProviders: false },
+			footer: { custom: false },
+			credits: { enabled: true },
+			usage: { periods: ["day", "week"] },
+		});
 	});
 
 	test("ignores nested values that are not objects", () => {
@@ -100,6 +111,7 @@ describe("loadKiloPreferences", () => {
 		writeConfig(agentDirectory, { footer: true, credits: [], usage: "day" });
 
 		expect(loadKiloPreferences({ agentDirectory, cwd, projectTrusted: false, environment: {} })).toEqual({
+			display: { showForOtherProviders: false },
 			footer: { custom: true },
 			credits: { enabled: true },
 			usage: { periods: [] },
@@ -116,6 +128,7 @@ describe("loadKiloPreferences", () => {
 		});
 
 		expect(loadKiloPreferences({ agentDirectory, cwd, projectTrusted: false, environment: {} })).toEqual({
+			display: { showForOtherProviders: false },
 			footer: { custom: false },
 			credits: { enabled: true },
 			usage: { periods: [] },
@@ -133,6 +146,7 @@ describe("loadKiloPreferences", () => {
 		});
 
 		expect(loadKiloPreferences({ agentDirectory, cwd, projectTrusted: false, environment: {} })).toEqual({
+			display: { showForOtherProviders: false },
 			footer: { custom: false },
 			credits: { enabled: false },
 			usage: { periods: [] },
@@ -145,6 +159,7 @@ describe("loadKiloPreferences", () => {
 		writeConfig(agentDirectory, { footer: {}, credits: {}, usage: {} });
 
 		expect(loadKiloPreferences({ agentDirectory, cwd, projectTrusted: false, environment: {} })).toEqual({
+			display: { showForOtherProviders: false },
 			footer: { custom: true },
 			credits: { enabled: true },
 			usage: { periods: [] },
@@ -157,6 +172,7 @@ describe("loadKiloPreferences", () => {
 		writeConfig(agentDirectory, config);
 
 		expect(loadKiloPreferences({ agentDirectory, cwd, projectTrusted: false, environment: {} })).toEqual({
+			display: { showForOtherProviders: false },
 			footer: { custom: true },
 			credits: { enabled: true },
 			usage: { periods: [] },
