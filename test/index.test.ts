@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import kiloExtension, { parsePrice } from "../src/index.ts";
+import kiloExtension, { type KiloExtensionApi, parsePrice } from "../src/index.ts";
 
 const temporaryDirectories: string[] = [];
 let agentDirectory: string;
@@ -74,7 +74,7 @@ async function customFooterWasInstalled(customFooter: string): Promise<boolean> 
 
 	const on = vi.fn();
 	const setFooter = vi.fn();
-	await kiloExtension({ registerProvider: vi.fn(), on } as never);
+	await kiloExtension(extensionApi(vi.fn(), on));
 
 	const sessionStartHandlers = on.mock.calls
 		.filter(([event]) => event === "session_start")
@@ -98,7 +98,7 @@ test("hides ambient Kilo UI at startup for another provider", async () => {
 	vi.stubEnv("KILO_PI_CUSTOM_FOOTER", "1");
 	vi.stubEnv("KILO_PI_USAGE", "day");
 
-	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
 	await Promise.all(handlers(runtime.on, "session_start").map((run) => run({}, runtime.context)));
 
 	expect(runtime.context.ui.setFooter).not.toHaveBeenCalled();
@@ -114,7 +114,7 @@ test("model selection hides and restores ambient Kilo UI", async () => {
 	const runtime = createRuntime({ apiKey: "api-key" });
 	vi.stubEnv("KILO_PI_CUSTOM_FOOTER", "1");
 
-	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
 	await Promise.all(handlers(runtime.on, "session_start").map((run) => run({}, runtime.context)));
 	expect(runtime.context.ui.setFooter).toHaveBeenLastCalledWith(expect.any(Function));
 
@@ -137,7 +137,7 @@ test("selecting a Kilo model immediately restores configured usage status", asyn
 		usage: { usage: [{ date: new Date().toISOString().slice(0, 10), total_cost: 4_000_000 }] },
 	});
 
-	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
 	runtime.context.model.provider = "kilo";
 	await handler(runtime.on, "model_select")({ model: { provider: "kilo" } }, runtime.context);
 
@@ -163,7 +163,7 @@ test("exposes Kilo credits when the custom footer is disabled", async () => {
 
 	const on = vi.fn();
 	const setStatus = vi.fn();
-	await kiloExtension({ registerProvider: vi.fn(), on } as never);
+	await kiloExtension(extensionApi(vi.fn(), on));
 
 	const sessionStartHandlers = on.mock.calls
 		.filter(([event]) => event === "session_start")
@@ -186,7 +186,7 @@ test("does not fetch or display credits when KILO_PI_SHOW_CREDITS is disabled", 
 	mkdirSync(configDirectory, { recursive: true });
 	writeFileSync(join(configDirectory, "config.json"), JSON.stringify({ credits: { enabled: false } }));
 
-	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
 	await handler(runtime.on, "session_start")({}, runtime.context);
 	await handler(runtime.on, "model_select")({ model: { provider: "kilo" } }, runtime.context);
 	await handler(runtime.on, "turn_end")({}, runtime.context);
@@ -202,7 +202,7 @@ test("registers anonymous free models from the Kilo catalog", async () => {
 	const registerProvider = vi.fn();
 	const on = vi.fn();
 
-	await kiloExtension({ registerProvider, on } as never);
+	await kiloExtension(extensionApi(registerProvider, on));
 
 	expect(fetchMock).toHaveBeenCalledOnce();
 	expect(fetchMock.mock.calls[0]?.[0]).toBe("https://api.kilo.ai/api/gateway/models");
@@ -236,7 +236,7 @@ test("loads the organization catalog with stored OAuth credentials", async () =>
 	const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(catalogResponse());
 	vi.stubGlobal("fetch", fetchMock);
 
-	await kiloExtension({ registerProvider: vi.fn(), on: vi.fn() } as never);
+	await kiloExtension(extensionApi(vi.fn(), vi.fn()));
 
 	expect(fetchMock).toHaveBeenCalledOnce();
 	expect(fetchMock).toHaveBeenCalledWith(
@@ -258,7 +258,7 @@ test("loads the organization catalog with KILO_API_KEY", async () => {
 	const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(catalogResponse());
 	vi.stubGlobal("fetch", fetchMock);
 
-	await kiloExtension({ registerProvider: vi.fn(), on: vi.fn() } as never);
+	await kiloExtension(extensionApi(vi.fn(), vi.fn()));
 
 	expect(fetchMock).toHaveBeenCalledOnce();
 	expect(fetchMock).toHaveBeenCalledWith(
@@ -274,14 +274,27 @@ test("loads the organization catalog with KILO_API_KEY", async () => {
 
 type ExtensionHandler = (event: unknown, context: unknown) => Promise<unknown>;
 
-function handlers(on: ReturnType<typeof vi.fn>, event: string): ExtensionHandler[] {
-	return on.mock.calls.filter(([name]) => name === event).map(([, run]) => run as ExtensionHandler);
+type ExtensionOn = ReturnType<typeof vi.fn>;
+type RegisterProvider = ReturnType<typeof vi.fn>;
+
+function extensionApi(registerProvider: RegisterProvider, on: ExtensionOn): KiloExtensionApi {
+	// SAFETY: these spies implement the extension methods used during initialization; calls are verified by the tests.
+	return { registerProvider, on, getThinkingLevel: vi.fn() } as KiloExtensionApi;
 }
 
-function handler(on: ReturnType<typeof vi.fn>, event: string): ExtensionHandler {
-	const registered = on.mock.calls.find(([name]) => name === event)?.[1] as ExtensionHandler | undefined;
+function extensionHandler(run: ReturnType<typeof vi.fn>): ExtensionHandler {
+	// SAFETY: every recorded second argument comes from pi.on and is therefore an extension event handler.
+	return run as ExtensionHandler;
+}
+
+function handlers(on: ExtensionOn, event: string): ExtensionHandler[] {
+	return on.mock.calls.filter(([name]) => name === event).map(([, run]) => extensionHandler(run));
+}
+
+function handler(on: ExtensionOn, event: string): ExtensionHandler {
+	const registered = on.mock.calls.find(([name]) => name === event)?.[1];
 	if (!registered) throw new Error(`${event} handler not registered`);
-	return registered;
+	return extensionHandler(registered);
 }
 
 function createRuntime(
@@ -291,6 +304,7 @@ function createRuntime(
 		organizationId?: string;
 		balance?: number;
 		balanceResponse?: Promise<Response>;
+		sessionCatalogResponse?: Promise<Response>;
 		usage?: unknown;
 		usageResponse?: Promise<Response>;
 		provider?: string;
@@ -299,6 +313,7 @@ function createRuntime(
 	if (options.auth) setAuth(options.auth);
 	vi.stubEnv("KILO_API_KEY", options.apiKey ?? "");
 	vi.stubEnv("KILO_ORG_ID", options.organizationId ?? "");
+	let catalogRequestCount = 0;
 	const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (input) => {
 		const url = String(input);
 		if (url.endsWith("/balance")) {
@@ -310,6 +325,8 @@ function createRuntime(
 		if (url.includes("/usage?")) {
 			return options.usageResponse ?? new Response(JSON.stringify(options.usage ?? { usage: [] }), { status: 200 });
 		}
+		catalogRequestCount += 1;
+		if (catalogRequestCount === 2 && options.sessionCatalogResponse) return options.sessionCatalogResponse;
 		return catalogResponse();
 	});
 	vi.stubGlobal("fetch", fetchMock);
@@ -325,10 +342,26 @@ function createRuntime(
 	return { context, fetchMock, on, setStatus };
 }
 
+test("session_start does not request balance after switching away during catalog refresh", async () => {
+	const sessionCatalogResponse = deferred<Response>();
+	const runtime = createRuntime({ apiKey: "api-key", sessionCatalogResponse: sessionCatalogResponse.promise });
+
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
+	const sessionStart = handler(runtime.on, "session_start")({}, runtime.context);
+	await vi.waitFor(() => expect(runtime.fetchMock).toHaveBeenCalledTimes(2));
+
+	runtime.context.model.provider = "other";
+	await handler(runtime.on, "model_select")({ model: { provider: "other" } }, runtime.context);
+	sessionCatalogResponse.resolve(catalogResponse());
+	await sessionStart;
+
+	expect(runtime.fetchMock.mock.calls.some(([url]) => String(url).endsWith("/balance"))).toBe(false);
+});
+
 test("session_start refreshes the API-key catalog and credits", async () => {
 	const runtime = createRuntime({ apiKey: "api-key", organizationId: "org-id" });
 
-	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
 	await handler(runtime.on, "session_start")({}, runtime.context);
 
 	expect(runtime.fetchMock.mock.calls).toEqual([
@@ -370,7 +403,7 @@ test.each([
 ])("%s refreshes API-key credits", async (event, payload) => {
 	const runtime = createRuntime({ apiKey: "api-key", organizationId: "org-id" });
 
-	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
 	await handler(runtime.on, event)(payload, runtime.context);
 
 	expect(runtime.fetchMock.mock.calls[1]).toEqual([
@@ -397,7 +430,7 @@ test.each([
 		const runtime = createRuntime(runtimeOptions);
 		const context = { ...runtime.context, ...contextOverrides };
 
-		await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+		await kiloExtension(extensionApi(vi.fn(), runtime.on));
 		await handler(runtime.on, event)(payload, context);
 
 		expect(runtime.fetchMock).toHaveBeenCalledTimes(expectedFetchCount);
@@ -427,7 +460,7 @@ test.each([
 ])("before_agent_start handles %s Kilo access", async (_name, auth, apiKey, expected) => {
 	const runtime = createRuntime({ auth, apiKey });
 
-	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
 	const beforeAgentStart = handler(runtime.on, "before_agent_start");
 	await expect(beforeAgentStart({}, { model: { provider: "kilo" } })).resolves.toEqual(expected);
 	await expect(beforeAgentStart({}, { model: { provider: "kilo" } })).resolves.toBeUndefined();
@@ -436,7 +469,7 @@ test.each([
 test("does not request usage or set a usage status by default", async () => {
 	const runtime = createRuntime({ apiKey: "api-key" });
 
-	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
 	await handler(runtime.on, "session_start")({}, runtime.context);
 	await handler(runtime.on, "turn_end")({}, runtime.context);
 
@@ -451,7 +484,7 @@ test.each(["1", "true", "yes", "day"])("%s enables daily usage status refreshes"
 		usage: { usage: [{ date: new Date().toISOString().slice(0, 10), total_cost: 1_234_567 }] },
 	});
 
-	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
 	await handler(runtime.on, "session_start")({}, runtime.context);
 
 	await vi.waitFor(() => {
@@ -464,7 +497,7 @@ test("turn_end skips ambient API calls for another provider", async () => {
 	vi.stubEnv("KILO_PI_USAGE", "day");
 	const runtime = createRuntime({ apiKey: "api-key", provider: "other" });
 
-	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
 	await handler(runtime.on, "turn_end")({}, runtime.context);
 
 	expect(runtime.fetchMock).toHaveBeenCalledTimes(1);
@@ -476,7 +509,7 @@ test("the display override keeps turn-related ambient API calls enabled", async 
 	vi.stubEnv("KILO_PI_USAGE", "day");
 	const runtime = createRuntime({ apiKey: "api-key", provider: "other" });
 
-	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
 	await handler(runtime.on, "turn_end")({}, runtime.context);
 
 	await vi.waitFor(() => expect(runtime.fetchMock).toHaveBeenCalledTimes(3));
@@ -489,7 +522,7 @@ test("turn_end schedules an enabled daily usage refresh", async () => {
 		usage: { usage: [{ date: new Date().toISOString().slice(0, 10), total_cost: 2_000_000 }] },
 	});
 
-	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
 	await handler(runtime.on, "turn_end")({}, runtime.context);
 
 	await vi.waitFor(() => {
@@ -501,7 +534,7 @@ test("switching providers prevents an in-flight balance refresh from republishin
 	const balanceResponse = deferred<Response>();
 	const runtime = createRuntime({ apiKey: "api-key", balanceResponse: balanceResponse.promise });
 
-	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
 	const turnEnd = handler(runtime.on, "turn_end")({}, runtime.context);
 	runtime.context.model.provider = "other";
 	await handler(runtime.on, "model_select")({ model: { provider: "other" } }, runtime.context);
@@ -516,7 +549,7 @@ test("switching providers prevents an in-flight usage refresh from republishing 
 	const usageResponse = deferred<Response>();
 	const runtime = createRuntime({ apiKey: "api-key", usageResponse: usageResponse.promise });
 
-	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
 	await handler(runtime.on, "turn_end")({}, runtime.context);
 	runtime.context.model.provider = "other";
 	await handler(runtime.on, "model_select")({ model: { provider: "other" } }, runtime.context);
@@ -536,7 +569,7 @@ test("turn_end does not wait for an enabled usage response", async () => {
 	const usageResponse = deferred<Response>();
 	const runtime = createRuntime({ apiKey: "api-key", usageResponse: usageResponse.promise });
 
-	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
 	await expect(handler(runtime.on, "turn_end")({}, runtime.context)).resolves.toBeUndefined();
 	expect(runtime.fetchMock.mock.calls.some(([url]) => String(url).includes("/usage?"))).toBe(true);
 
@@ -554,7 +587,7 @@ test("turn_end does not wait for an enabled usage response", async () => {
 test("before_agent_start does not consume the notice for another provider", async () => {
 	const runtime = createRuntime();
 
-	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
 	const beforeAgentStart = handler(runtime.on, "before_agent_start");
 	await expect(beforeAgentStart({}, { model: { provider: "other" } })).resolves.toBeUndefined();
 	await expect(beforeAgentStart({}, { model: { provider: "kilo" } })).resolves.toMatchObject({

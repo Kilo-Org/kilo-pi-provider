@@ -134,7 +134,9 @@ function makeProviderConfig(organizationId?: string) {
 // Extension Entry Point
 // =============================================================================
 
-export default async function (pi: ExtensionAPI) {
+export type KiloExtensionApi = Pick<ExtensionAPI, "getThinkingLevel" | "on" | "registerProvider">;
+
+export default async function (pi: KiloExtensionApi) {
 	const startupAccess = getKiloAccess();
 	let preferences = loadKiloPreferences({ cwd: process.cwd(), projectTrusted: false });
 
