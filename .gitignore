@@ -1,2 +1,5 @@
-node_modules/
+.env
+.pi/
 coverage/
+node_modules/
+skills-lock.json
