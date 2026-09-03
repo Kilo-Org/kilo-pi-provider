@@ -14,7 +14,7 @@ import { isFreeModel, mapOpenRouterModel, type OpenRouterModel, parsePrice } fro
 
 export { parsePrice };
 
-import type { ExtensionAPI, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import {
 	fetchKiloBalance,
 	fetchKiloUsageEntries,
@@ -138,11 +138,28 @@ export default async function (pi: ExtensionAPI) {
 	const startupAccess = getKiloAccess();
 	let preferences = loadKiloPreferences({ cwd: process.cwd(), projectTrusted: false });
 
+	let kiloFooterInstalled = false;
 	const shouldShowAmbientKiloUi = (provider: string | undefined): boolean =>
 		provider === "kilo" || preferences.display.showForOtherProviders;
 
-	const clearAmbientKiloStatuses = (ctx: { ui: { setStatus(key: string, value: undefined): void } }): void => {
+	const clearAmbientKiloStatuses = (ctx: ExtensionContext): void => {
 		for (const key of KILO_STATUS_KEYS) ctx.ui.setStatus(key, undefined);
+	};
+
+	const reconcileAmbientKiloUi = (ctx: ExtensionContext, provider: string | undefined): boolean => {
+		const visible = shouldShowAmbientKiloUi(provider);
+		if (!ctx.hasUI) return visible;
+
+		if (visible && preferences.footer.custom && !kiloFooterInstalled) {
+			installCustomFooter(pi, ctx, preferences.credits.enabled);
+			kiloFooterInstalled = true;
+		} else if ((!visible || !preferences.footer.custom) && kiloFooterInstalled) {
+			ctx.ui.setFooter(undefined);
+			kiloFooterInstalled = false;
+		}
+
+		if (!visible) clearAmbientKiloStatuses(ctx);
+		return visible;
 	};
 
 	// Fetch models at load time so the provider is immediately usable for
@@ -238,10 +255,7 @@ export default async function (pi: ExtensionAPI) {
 		const access = getKiloAccess();
 		const usagePeriods = preferences.usage.periods;
 
-		if (ctx.hasUI && !shouldShowAmbientKiloUi(ctx.model?.provider)) {
-			clearAmbientKiloStatuses(ctx);
-			return;
-		}
+		if (!reconcileAmbientKiloUi(ctx, ctx.model?.provider)) return;
 
 		// Clear a stale credit status after logout when an interactive UI is available.
 		if (!access) {
@@ -293,7 +307,8 @@ export default async function (pi: ExtensionAPI) {
 
 	// Update credits display when model changes to a Kilo model
 	pi.on("model_select", async (event, ctx) => {
-		if (event.model?.provider !== "kilo") return;
+		if (!reconcileAmbientKiloUi(ctx, event.model.provider)) return;
+		if (event.model.provider !== "kilo" && !preferences.display.showForOtherProviders) return;
 
 		const access = getKiloAccess();
 		if (!access) return;
@@ -361,11 +376,5 @@ export default async function (pi: ExtensionAPI) {
 				display: true,
 			},
 		};
-	});
-
-	pi.on("session_start", async (_event, ctx) => {
-		if (preferences.footer.custom && shouldShowAmbientKiloUi(ctx.model?.provider)) {
-			installCustomFooter(pi, ctx, preferences.credits.enabled);
-		}
 	});
 }

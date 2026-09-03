@@ -367,7 +367,7 @@ test.each([
 test.each([
 	["session_start", {}, {}, {}, 1, "kilo-credits"],
 	["session_start", {}, { apiKey: "api-key" }, { hasUI: false }, 2, undefined],
-	["model_select", { model: { provider: "other" } }, { apiKey: "api-key" }, {}, 1, undefined],
+	["model_select", { model: { provider: "other" } }, { apiKey: "api-key" }, {}, 1, "kilo-credits"],
 	["turn_end", {}, { apiKey: "api-key" }, { hasUI: false }, 1, undefined],
 ])(
 	"%s skips credit work when access, UI, or Kilo model requirements are unmet",
