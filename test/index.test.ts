@@ -272,6 +272,7 @@ function createRuntime(
 		apiKey?: string;
 		organizationId?: string;
 		balance?: number;
+		balanceResponse?: Promise<Response>;
 		usage?: unknown;
 		usageResponse?: Promise<Response>;
 		provider?: string;
@@ -283,7 +284,10 @@ function createRuntime(
 	const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (input) => {
 		const url = String(input);
 		if (url.endsWith("/balance")) {
-			return new Response(JSON.stringify({ balance: options.balance ?? 12.34 }), { status: 200 });
+			return (
+				options.balanceResponse ??
+				new Response(JSON.stringify({ balance: options.balance ?? 12.34 }), { status: 200 })
+			);
 		}
 		if (url.includes("/usage?")) {
 			return options.usageResponse ?? new Response(JSON.stringify(options.usage ?? { usage: [] }), { status: 200 });
@@ -473,6 +477,20 @@ test("turn_end schedules an enabled daily usage refresh", async () => {
 	await vi.waitFor(() => {
 		expect(runtime.setStatus).toHaveBeenCalledWith("kilo-usage-day", "💸 $2.00 today");
 	});
+});
+
+test("switching providers prevents an in-flight balance refresh from republishing status", async () => {
+	const balanceResponse = deferred<Response>();
+	const runtime = createRuntime({ apiKey: "api-key", balanceResponse: balanceResponse.promise });
+
+	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	const turnEnd = handler(runtime.on, "turn_end")({}, runtime.context);
+	runtime.context.model.provider = "other";
+	await handler(runtime.on, "model_select")({ model: { provider: "other" } }, runtime.context);
+
+	balanceResponse.resolve(new Response(JSON.stringify({ balance: 99.99 }), { status: 200 }));
+	await turnEnd;
+	expect(runtime.setStatus).not.toHaveBeenCalledWith("kilo-credits", "💰 $99.99");
 });
 
 test("switching providers prevents an in-flight usage refresh from republishing status", async () => {
