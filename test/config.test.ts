@@ -14,9 +14,18 @@ afterEach(() => {
 test("merges global, project, and environment preferences in precedence order", () => {
 	expect(
 		mergeKiloPreferences(
-			{ footer: { custom: false }, credits: { enabled: false }, usage: { periods: ["week"] } },
-			{ credits: { enabled: true } },
-			{ credits: { enabled: false }, usage: { periods: ["day", "month"] } },
+			{
+				display: { showForOtherProviders: false },
+				footer: { custom: false },
+				credits: { enabled: false },
+				usage: { periods: ["week"] },
+			},
+			{ display: { showForOtherProviders: true }, credits: { enabled: true } },
+			{
+				display: { showForOtherProviders: false },
+				credits: { enabled: false },
+				usage: { periods: ["day", "month"] },
+			},
 		),
 	).toEqual({
 		display: { showForOtherProviders: false },
@@ -73,11 +82,19 @@ describe("loadKiloPreferences", () => {
 	test("uses trusted project preferences over global preferences", () => {
 		const agentDirectory = createDirectory();
 		const cwd = createDirectory();
-		writeConfig(agentDirectory, { credits: { enabled: false }, usage: { periods: ["week"] } });
-		writeConfig(join(cwd, ".pi"), { credits: { enabled: true }, usage: { periods: ["day", "month"] } });
+		writeConfig(agentDirectory, {
+			display: { showForOtherProviders: false },
+			credits: { enabled: false },
+			usage: { periods: ["week"] },
+		});
+		writeConfig(join(cwd, ".pi"), {
+			display: { showForOtherProviders: true },
+			credits: { enabled: true },
+			usage: { periods: ["day", "month"] },
+		});
 
 		expect(loadKiloPreferences({ agentDirectory, cwd, projectTrusted: true, environment: {} })).toEqual({
-			display: { showForOtherProviders: false },
+			display: { showForOtherProviders: true },
 			footer: { custom: true },
 			credits: { enabled: true },
 			usage: { periods: ["day", "month"] },
@@ -87,15 +104,20 @@ describe("loadKiloPreferences", () => {
 	test("ignores untrusted project preferences and lets environment override config", () => {
 		const agentDirectory = createDirectory();
 		const cwd = createDirectory();
-		writeConfig(agentDirectory, { credits: { enabled: false } });
-		writeConfig(join(cwd, ".pi"), { credits: { enabled: true } });
+		writeConfig(agentDirectory, { display: { showForOtherProviders: true }, credits: { enabled: false } });
+		writeConfig(join(cwd, ".pi"), { display: { showForOtherProviders: false }, credits: { enabled: true } });
 
 		expect(
 			loadKiloPreferences({
 				agentDirectory,
 				cwd,
 				projectTrusted: false,
-				environment: { KILO_PI_SHOW_CREDITS: "true", KILO_PI_CUSTOM_FOOTER: "0", KILO_PI_USAGE: "day,week" },
+				environment: {
+					KILO_PI_SHOW_FOR_OTHER_PROVIDERS: "0",
+					KILO_PI_SHOW_CREDITS: "true",
+					KILO_PI_CUSTOM_FOOTER: "0",
+					KILO_PI_USAGE: "day,week",
+				},
 			}),
 		).toEqual({
 			display: { showForOtherProviders: false },
