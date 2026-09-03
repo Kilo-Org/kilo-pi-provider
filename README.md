@@ -51,7 +51,15 @@ You can also set `KILO_API_KEY` directly instead of using the login flow. Set `K
 
 ### Footer
 
-Kilo replaces Pi's footer by default to show usage and credits. To keep another extension's custom footer, disable Kilo's footer:
+When a Kilo model is selected, Kilo replaces Pi's footer by default to show usage and credits. Selecting a model from another provider restores Pi's footer and hides Kilo's ambient statuses. To keep Kilo's footer and statuses visible for models from other providers, set:
+
+```bash
+KILO_PI_SHOW_FOR_OTHER_PROVIDERS=1 pi
+```
+
+This setting controls only automatic footer and status presentation. It does not disable Kilo API access or explicitly invoked extension UI.
+
+To keep another extension's custom footer, disable Kilo's footer:
 
 ```bash
 KILO_PI_CUSTOM_FOOTER=0 pi
@@ -69,6 +77,7 @@ Set non-secret preferences globally in `~/.pi/agent/extensions/kilo-pi-provider/
 
 ```json
 {
+  "display": { "showForOtherProviders": false },
   "footer": { "custom": false },
   "credits": { "enabled": true },
   "usage": { "periods": ["day", "week"] }
@@ -76,6 +85,8 @@ Set non-secret preferences globally in `~/.pi/agent/extensions/kilo-pi-provider/
 ```
 
 A trusted project file overrides the global file, and environment variables override both. Project preferences are ignored until Pi trusts the project. Keep API keys and OAuth credentials out of these files.
+
+The `display.showForOtherProviders` preference defaults to `false` and is overridden by `KILO_PI_SHOW_FOR_OTHER_PROVIDERS`.
 
 Environment overrides are useful for one-off sessions:
 
