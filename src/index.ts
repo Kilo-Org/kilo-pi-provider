@@ -267,6 +267,7 @@ export default async function (pi: KiloExtensionApi) {
 		const access = getKiloAccess();
 		const usagePeriods = preferences.usage.periods;
 		const showAmbientUi = reconcileAmbientKiloUi(ctx, ctx.model?.provider);
+		const sessionStartRevision = ambientUiRevision;
 
 		// Clear a stale credit status after logout when an interactive UI is available.
 		if (!access) {
@@ -303,7 +304,9 @@ export default async function (pi: KiloExtensionApi) {
 		}
 
 		// Fetch and display credits balance when enabled and an interactive UI is available.
-		if (showAmbientUi && ctx.hasUI && preferences.credits.enabled) {
+		const ambientUiIsCurrent =
+			sessionStartRevision === ambientUiRevision && shouldShowAmbientKiloUi(ctx.model?.provider);
+		if (showAmbientUi && ambientUiIsCurrent && ctx.hasUI && preferences.credits.enabled) {
 			const revision = ambientUiRevision;
 			try {
 				const balance = await fetchKiloBalance(access.token, access.organizationId);
@@ -314,7 +317,7 @@ export default async function (pi: KiloExtensionApi) {
 		}
 	});
 
-	// Update credits display when model changes to a Kilo model
+	// Reconcile and refresh ambient Kilo UI when the selected model changes.
 	pi.on("model_select", async (event, ctx) => {
 		if (!reconcileAmbientKiloUi(ctx, event.model.provider)) return;
 		if (event.model.provider !== "kilo" && !preferences.display.showForOtherProviders) return;
