@@ -318,9 +318,17 @@ export default async function (pi: ExtensionAPI) {
 		if (event.model.provider !== "kilo" && !preferences.display.showForOtherProviders) return;
 
 		const access = getKiloAccess();
-		if (!access) return;
+		if (!access || !ctx.hasUI) return;
 
-		if (!ctx.hasUI || !preferences.credits.enabled) return;
+		const usagePeriods = preferences.usage.periods;
+		if (usagePeriods.length > 0) {
+			usageRefresher.refresh(access, usagePeriods, {
+				setStatus: (key, value) => ctx.ui.setStatus(key, value),
+				accent: (text) => ctx.ui.theme.fg("accent", text),
+			});
+		}
+
+		if (!preferences.credits.enabled) return;
 
 		const revision = ambientUiRevision;
 		try {
