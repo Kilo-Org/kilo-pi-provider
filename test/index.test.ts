@@ -109,6 +109,25 @@ test("hides ambient Kilo UI at startup for another provider", async () => {
 	expect(runtime.fetchMock.mock.calls.some(([url]) => String(url).includes("/usage?"))).toBe(false);
 });
 
+test("model selection hides and restores ambient Kilo UI", async () => {
+	const runtime = createRuntime({ apiKey: "api-key" });
+	vi.stubEnv("KILO_PI_CUSTOM_FOOTER", "1");
+
+	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await Promise.all(handlers(runtime.on, "session_start").map((run) => run({}, runtime.context)));
+	expect(runtime.context.ui.setFooter).toHaveBeenLastCalledWith(expect.any(Function));
+
+	runtime.context.model.provider = "other";
+	await handler(runtime.on, "model_select")({ model: { provider: "other" } }, runtime.context);
+	expect(runtime.context.ui.setFooter).toHaveBeenLastCalledWith(undefined);
+	expect(runtime.setStatus).toHaveBeenCalledWith("kilo-credits", undefined);
+
+	runtime.context.model.provider = "kilo";
+	await handler(runtime.on, "model_select")({ model: { provider: "kilo" } }, runtime.context);
+	expect(runtime.context.ui.setFooter).toHaveBeenLastCalledWith(expect.any(Function));
+	expect(runtime.setStatus).toHaveBeenLastCalledWith("kilo-credits", "💰 $12.34");
+});
+
 test("exposes Kilo credits when the custom footer is disabled", async () => {
 	setAuth({ kilo: { type: "oauth", access: "stored-access-token" } });
 
