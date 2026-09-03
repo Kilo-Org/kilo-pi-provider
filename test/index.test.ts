@@ -475,6 +475,26 @@ test("turn_end schedules an enabled daily usage refresh", async () => {
 	});
 });
 
+test("switching providers prevents an in-flight usage refresh from republishing status", async () => {
+	vi.stubEnv("KILO_PI_USAGE", "day");
+	const usageResponse = deferred<Response>();
+	const runtime = createRuntime({ apiKey: "api-key", usageResponse: usageResponse.promise });
+
+	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await handler(runtime.on, "turn_end")({}, runtime.context);
+	runtime.context.model.provider = "other";
+	await handler(runtime.on, "model_select")({ model: { provider: "other" } }, runtime.context);
+
+	usageResponse.resolve(
+		new Response(
+			JSON.stringify({ usage: [{ date: new Date().toISOString().slice(0, 10), total_cost: 3_000_000 }] }),
+			{ status: 200 },
+		),
+	);
+	await new Promise<void>((resolve) => setImmediate(resolve));
+	expect(runtime.setStatus).not.toHaveBeenCalledWith("kilo-usage-day", "💸 $3.00 today");
+});
+
 test("turn_end does not wait for an enabled usage response", async () => {
 	vi.stubEnv("KILO_PI_USAGE", "day");
 	const usageResponse = deferred<Response>();
