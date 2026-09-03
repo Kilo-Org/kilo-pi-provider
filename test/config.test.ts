@@ -21,6 +21,10 @@ test("merges global, project, and environment preferences in precedence order", 
 	).toEqual({ footer: { custom: false }, credits: { enabled: false }, usage: { periods: ["day", "month"] } });
 });
 
+test("hides ambient Kilo UI for other providers by default", () => {
+	expect(mergeKiloPreferences({}, undefined, {}).display.showForOtherProviders).toBe(false);
+});
+
 test.each([
 	["KILO_PI_USAGE=day,week", { KILO_PI_USAGE: "day,week" }, ["day", "week"]],
 	["legacy truthy KILO_PI_USAGE", { KILO_PI_USAGE: "true" }, ["day"]],
@@ -28,6 +32,16 @@ test.each([
 ])("parses %s", (_name, environment, periods) => {
 	expect(getEnvironmentPreferences(environment).usage?.periods).toEqual(periods);
 });
+
+test.each(["1", "true", "yes"])(
+	"KILO_PI_SHOW_FOR_OTHER_PROVIDERS=%s shows ambient Kilo UI for other providers",
+	(value) => {
+		expect(
+			mergeKiloPreferences({}, undefined, getEnvironmentPreferences({ KILO_PI_SHOW_FOR_OTHER_PROVIDERS: value }))
+				.display.showForOtherProviders,
+		).toBe(true);
+	},
+);
 
 test("uses defaults for unrecognized boolean environment values", () => {
 	expect(
