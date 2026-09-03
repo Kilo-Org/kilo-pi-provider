@@ -438,6 +438,28 @@ test.each(["1", "true", "yes", "day"])("%s enables daily usage status refreshes"
 	expect(runtime.fetchMock.mock.calls.some(([url]) => String(url).includes("/usage?period=week"))).toBe(true);
 });
 
+test("turn_end skips ambient API calls for another provider", async () => {
+	vi.stubEnv("KILO_PI_USAGE", "day");
+	const runtime = createRuntime({ apiKey: "api-key", provider: "other" });
+
+	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await handler(runtime.on, "turn_end")({}, runtime.context);
+
+	expect(runtime.fetchMock).toHaveBeenCalledTimes(1);
+	expect(runtime.setStatus).not.toHaveBeenCalled();
+});
+
+test("the display override keeps turn-related ambient API calls enabled", async () => {
+	vi.stubEnv("KILO_PI_SHOW_FOR_OTHER_PROVIDERS", "1");
+	vi.stubEnv("KILO_PI_USAGE", "day");
+	const runtime = createRuntime({ apiKey: "api-key", provider: "other" });
+
+	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await handler(runtime.on, "turn_end")({}, runtime.context);
+
+	await vi.waitFor(() => expect(runtime.fetchMock).toHaveBeenCalledTimes(3));
+});
+
 test("turn_end schedules an enabled daily usage refresh", async () => {
 	vi.stubEnv("KILO_PI_USAGE", "day");
 	const runtime = createRuntime({
