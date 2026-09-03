@@ -158,7 +158,10 @@ export default async function (pi: ExtensionAPI) {
 			kiloFooterInstalled = false;
 		}
 
-		if (!visible) clearAmbientKiloStatuses(ctx);
+		if (!visible) {
+			usageRefresher.invalidate();
+			clearAmbientKiloStatuses(ctx);
+		}
 		return visible;
 	};
 
