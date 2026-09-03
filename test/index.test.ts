@@ -76,11 +76,8 @@ async function customFooterWasInstalled(customFooter: string): Promise<boolean> 
 	const setFooter = vi.fn();
 	await kiloExtension(extensionApi(vi.fn(), on));
 
-	const sessionStartHandlers = on.mock.calls
-		.filter(([event]) => event === "session_start")
-		.map(([, handler]) => handler as (event: unknown, context: unknown) => Promise<void>);
 	const context = { model: { provider: "kilo" }, hasUI: true, ui: { setFooter, setStatus: vi.fn() } };
-	await Promise.all(sessionStartHandlers.map((handler) => handler({}, context)));
+	await Promise.all(handlers(on, "session_start").map((run) => run({}, context)));
 
 	return setFooter.mock.calls.length > 0;
 }
@@ -165,16 +162,13 @@ test("exposes Kilo credits when the custom footer is disabled", async () => {
 	const setStatus = vi.fn();
 	await kiloExtension(extensionApi(vi.fn(), on));
 
-	const sessionStartHandlers = on.mock.calls
-		.filter(([event]) => event === "session_start")
-		.map(([, handler]) => handler as (event: unknown, context: unknown) => Promise<void>);
 	const context = {
 		model: { provider: "kilo" },
 		hasUI: true,
 		ui: { setFooter: vi.fn(), setStatus, theme: { fg: vi.fn((_tone, text) => text) } },
 		modelRegistry: { registerProvider: vi.fn() },
 	};
-	await Promise.all(sessionStartHandlers.map((handler) => handler({}, context)));
+	await Promise.all(handlers(on, "session_start").map((run) => run({}, context)));
 
 	expect(setStatus).toHaveBeenCalledWith("kilo-credits", "💰 $12.34");
 	expect(context.ui.setFooter).not.toHaveBeenCalled();
