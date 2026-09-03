@@ -129,6 +129,23 @@ test("model selection hides and restores ambient Kilo UI", async () => {
 	expect(runtime.setStatus).toHaveBeenLastCalledWith("kilo-credits", "💰 $12.34");
 });
 
+test("selecting a Kilo model immediately restores configured usage status", async () => {
+	vi.stubEnv("KILO_PI_USAGE", "day");
+	const runtime = createRuntime({
+		apiKey: "api-key",
+		provider: "other",
+		usage: { usage: [{ date: new Date().toISOString().slice(0, 10), total_cost: 4_000_000 }] },
+	});
+
+	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	runtime.context.model.provider = "kilo";
+	await handler(runtime.on, "model_select")({ model: { provider: "kilo" } }, runtime.context);
+
+	await vi.waitFor(() => {
+		expect(runtime.setStatus).toHaveBeenCalledWith("kilo-usage-day", "💸 $4.00 today");
+	});
+});
+
 test("exposes Kilo credits when the custom footer is disabled", async () => {
 	setAuth({ kilo: { type: "oauth", access: "stored-access-token" } });
 
