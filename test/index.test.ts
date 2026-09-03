@@ -105,6 +105,7 @@ test("hides ambient Kilo UI at startup for another provider", async () => {
 	for (const key of ["kilo-credits", "kilo-usage-day", "kilo-usage-week", "kilo-usage-month", "kilo-usage-year"]) {
 		expect(runtime.setStatus).toHaveBeenCalledWith(key, undefined);
 	}
+	expect(runtime.fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/models"))).toHaveLength(2);
 	expect(runtime.fetchMock.mock.calls.some(([url]) => String(url).endsWith("/balance"))).toBe(false);
 	expect(runtime.fetchMock.mock.calls.some(([url]) => String(url).includes("/usage?"))).toBe(false);
 });

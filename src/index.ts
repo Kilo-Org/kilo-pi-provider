@@ -264,8 +264,7 @@ export default async function (pi: ExtensionAPI) {
 		});
 		const access = getKiloAccess();
 		const usagePeriods = preferences.usage.periods;
-
-		if (!reconcileAmbientKiloUi(ctx, ctx.model?.provider)) return;
+		const showAmbientUi = reconcileAmbientKiloUi(ctx, ctx.model?.provider);
 
 		// Clear a stale credit status after logout when an interactive UI is available.
 		if (!access) {
@@ -273,7 +272,7 @@ export default async function (pi: ExtensionAPI) {
 			return;
 		}
 
-		if (ctx.hasUI && usagePeriods.length > 0) {
+		if (showAmbientUi && ctx.hasUI && usagePeriods.length > 0) {
 			usageRefresher.refresh(access, usagePeriods, {
 				setStatus: (key, value) => ctx.ui.setStatus(key, value),
 				accent: (text) => ctx.ui.theme.fg("accent", text),
@@ -302,7 +301,7 @@ export default async function (pi: ExtensionAPI) {
 		}
 
 		// Fetch and display credits balance when enabled and an interactive UI is available.
-		if (ctx.hasUI && preferences.credits.enabled) {
+		if (showAmbientUi && ctx.hasUI && preferences.credits.enabled) {
 			const revision = ambientUiRevision;
 			try {
 				const balance = await fetchKiloBalance(access.token, access.organizationId);
