@@ -139,6 +139,7 @@ export default async function (pi: ExtensionAPI) {
 	let preferences = loadKiloPreferences({ cwd: process.cwd(), projectTrusted: false });
 
 	let kiloFooterInstalled = false;
+	let ambientUiRevision = 0;
 	const shouldShowAmbientKiloUi = (provider: string | undefined): boolean =>
 		provider === "kilo" || preferences.display.showForOtherProviders;
 
@@ -147,6 +148,7 @@ export default async function (pi: ExtensionAPI) {
 	};
 
 	const reconcileAmbientKiloUi = (ctx: ExtensionContext, provider: string | undefined): boolean => {
+		ambientUiRevision += 1;
 		const visible = shouldShowAmbientKiloUi(provider);
 		if (!ctx.hasUI) return visible;
 
@@ -163,6 +165,11 @@ export default async function (pi: ExtensionAPI) {
 			clearAmbientKiloStatuses(ctx);
 		}
 		return visible;
+	};
+
+	const publishCredits = (ctx: ExtensionContext, balance: number, revision: number): void => {
+		if (revision !== ambientUiRevision || !shouldShowAmbientKiloUi(ctx.model?.provider)) return;
+		ctx.ui.setStatus("kilo-credits", ctx.ui.theme.fg("accent", `💰 ${formatCredits(balance)}`));
 	};
 
 	// Fetch models at load time so the provider is immediately usable for
@@ -296,12 +303,10 @@ export default async function (pi: ExtensionAPI) {
 
 		// Fetch and display credits balance when enabled and an interactive UI is available.
 		if (ctx.hasUI && preferences.credits.enabled) {
+			const revision = ambientUiRevision;
 			try {
 				const balance = await fetchKiloBalance(access.token, access.organizationId);
-				if (balance !== null) {
-					const theme = ctx.ui.theme;
-					ctx.ui.setStatus("kilo-credits", theme.fg("accent", `💰 ${formatCredits(balance)}`));
-				}
+				if (balance !== null) publishCredits(ctx, balance, revision);
 			} catch (error) {
 				console.warn("[kilo] Failed to fetch balance:", error instanceof Error ? error.message : error);
 			}
@@ -318,12 +323,10 @@ export default async function (pi: ExtensionAPI) {
 
 		if (!ctx.hasUI || !preferences.credits.enabled) return;
 
+		const revision = ambientUiRevision;
 		try {
 			const balance = await fetchKiloBalance(access.token, access.organizationId);
-			if (balance !== null) {
-				const theme = ctx.ui.theme;
-				ctx.ui.setStatus("kilo-credits", theme.fg("accent", `💰 ${formatCredits(balance)}`));
-			}
+			if (balance !== null) publishCredits(ctx, balance, revision);
 		} catch (error) {
 			console.warn(
 				"[kilo] Failed to fetch balance on model select:",
@@ -349,12 +352,10 @@ export default async function (pi: ExtensionAPI) {
 
 		if (!preferences.credits.enabled) return;
 
+		const revision = ambientUiRevision;
 		try {
 			const balance = await fetchKiloBalance(access.token, access.organizationId);
-			if (balance !== null) {
-				const theme = ctx.ui.theme;
-				ctx.ui.setStatus("kilo-credits", theme.fg("accent", `💰 ${formatCredits(balance)}`));
-			}
+			if (balance !== null) publishCredits(ctx, balance, revision);
 		} catch (error) {
 			console.warn("[kilo] Failed to fetch balance on turn end:", error instanceof Error ? error.message : error);
 		}
