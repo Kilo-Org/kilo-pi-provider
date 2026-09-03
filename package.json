@@ -1,6 +1,6 @@
 {
   "name": "@kilocode/kilo-pi-provider",
-  "version": "2026.08.2",
+  "version": "2026.09.0",
   "type": "module",
   "keywords": [
     "pi-package"
