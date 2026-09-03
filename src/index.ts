@@ -331,6 +331,8 @@ export default async function (pi: ExtensionAPI) {
 
 	// Refresh credits and opt-in usage after each turn.
 	pi.on("turn_end", async (_event, ctx) => {
+		if (!shouldShowAmbientKiloUi(ctx.model?.provider)) return;
+
 		const access = getKiloAccess();
 		const usagePeriods = preferences.usage.periods;
 		if (!access || !ctx.hasUI) return;
