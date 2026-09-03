@@ -10,16 +10,16 @@ Release versions use calendar versioning: `YYYY.MM.PATCH`. `PATCH` starts at `0`
 
 ### Breaking Changes
 
-- Hide Kilo's custom footer, credit balance, and usage statuses by default when the selected model uses another provider. Set `display.showForOtherProviders` to `true` or `KILO_PI_SHOW_FOR_OTHER_PROVIDERS=1` to preserve the previous always-visible behavior.
+- Hide Kilo's custom footer, credit balance, and usage statuses by default when the selected model uses another provider ([#30](https://github.com/Kilo-Org/kilo-pi-provider/pull/30)). Set `display.showForOtherProviders` to `true` or `KILO_PI_SHOW_FOR_OTHER_PROVIDERS=1` to preserve the previous always-visible behavior.
 
 ### Added
 
-- Restore Kilo's custom footer and refresh configured credit and usage statuses immediately when switching back to a Kilo model.
+- Restore Kilo's custom footer and refresh configured credit and usage statuses immediately when switching back to a Kilo model ([#30](https://github.com/Kilo-Org/kilo-pi-provider/pull/30)).
 
 ### Fixed
 
-- Avoid presentation-related balance and usage requests while ambient Kilo UI is hidden, including provider changes during in-flight requests.
-- Classify malformed Kilo Responses failures that provide `error.type` without the required `error.code`.
+- Avoid presentation-related balance and usage requests while ambient Kilo UI is hidden, including provider changes during in-flight requests ([#30](https://github.com/Kilo-Org/kilo-pi-provider/pull/30)).
+- Classify malformed Kilo Responses failures that provide `error.type` without the required `error.code` ([#29](https://github.com/Kilo-Org/kilo-pi-provider/pull/29)).
 
 ## [2026.08.2] - 2026-08-30
 
