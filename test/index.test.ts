@@ -18,6 +18,7 @@ beforeEach(() => {
 	vi.stubEnv("KILO_PI_CUSTOM_FOOTER", "0");
 	vi.stubEnv("KILO_PI_SHOW_CREDITS", "");
 	vi.stubEnv("KILO_PI_USAGE", "");
+	vi.stubEnv("KILO_PI_SHOW_FOR_OTHER_PROVIDERS", "");
 });
 
 afterEach(() => {
@@ -78,7 +79,7 @@ async function customFooterWasInstalled(customFooter: string): Promise<boolean> 
 	const sessionStartHandlers = on.mock.calls
 		.filter(([event]) => event === "session_start")
 		.map(([, handler]) => handler as (event: unknown, context: unknown) => Promise<void>);
-	const context = { hasUI: true, ui: { setFooter, setStatus: vi.fn() } };
+	const context = { model: { provider: "kilo" }, hasUI: true, ui: { setFooter, setStatus: vi.fn() } };
 	await Promise.all(sessionStartHandlers.map((handler) => handler({}, context)));
 
 	return setFooter.mock.calls.length > 0;
@@ -90,6 +91,22 @@ test("does not install the custom footer when disabled", async () => {
 
 test("installs the custom footer by default", async () => {
 	await expect(customFooterWasInstalled("")).resolves.toBe(true);
+});
+
+test("hides ambient Kilo UI at startup for another provider", async () => {
+	const runtime = createRuntime({ apiKey: "api-key", provider: "other" });
+	vi.stubEnv("KILO_PI_CUSTOM_FOOTER", "1");
+	vi.stubEnv("KILO_PI_USAGE", "day");
+
+	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
+	await Promise.all(handlers(runtime.on, "session_start").map((run) => run({}, runtime.context)));
+
+	expect(runtime.context.ui.setFooter).toHaveBeenCalledWith(undefined);
+	for (const key of ["kilo-credits", "kilo-usage-day", "kilo-usage-week", "kilo-usage-month", "kilo-usage-year"]) {
+		expect(runtime.setStatus).toHaveBeenCalledWith(key, undefined);
+	}
+	expect(runtime.fetchMock.mock.calls.some(([url]) => String(url).endsWith("/balance"))).toBe(false);
+	expect(runtime.fetchMock.mock.calls.some(([url]) => String(url).includes("/usage?"))).toBe(false);
 });
 
 test("exposes Kilo credits when the custom footer is disabled", async () => {
@@ -219,6 +236,10 @@ test("loads the organization catalog with KILO_API_KEY", async () => {
 
 type ExtensionHandler = (event: unknown, context: unknown) => Promise<unknown>;
 
+function handlers(on: ReturnType<typeof vi.fn>, event: string): ExtensionHandler[] {
+	return on.mock.calls.filter(([name]) => name === event).map(([, run]) => run as ExtensionHandler);
+}
+
 function handler(on: ReturnType<typeof vi.fn>, event: string): ExtensionHandler {
 	const registered = on.mock.calls.find(([name]) => name === event)?.[1] as ExtensionHandler | undefined;
 	if (!registered) throw new Error(`${event} handler not registered`);
@@ -233,6 +254,7 @@ function createRuntime(
 		balance?: number;
 		usage?: unknown;
 		usageResponse?: Promise<Response>;
+		provider?: string;
 	} = {},
 ) {
 	if (options.auth) setAuth(options.auth);
@@ -252,8 +274,9 @@ function createRuntime(
 	const on = vi.fn();
 	const setStatus = vi.fn();
 	const context = {
+		model: { provider: options.provider ?? "kilo" },
 		hasUI: true,
-		ui: { setStatus, theme: { fg: vi.fn((_tone, text) => text) } },
+		ui: { setFooter: vi.fn(), setStatus, theme: { fg: vi.fn((_tone, text) => text) } },
 		modelRegistry: { registerProvider: vi.fn() },
 	};
 
