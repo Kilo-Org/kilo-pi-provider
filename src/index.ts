@@ -42,6 +42,13 @@ import { createUsageRefresher } from "./usage.ts";
 const KILO_GATEWAY_BASE = `${KILO_API_BASE}/api/gateway`;
 const MODELS_FETCH_TIMEOUT_MS = 10_000;
 const KILO_TOS_URL = "https://kilo.ai/terms";
+const KILO_STATUS_KEYS = [
+	"kilo-credits",
+	"kilo-usage-day",
+	"kilo-usage-week",
+	"kilo-usage-month",
+	"kilo-usage-year",
+] as const;
 
 function formatCredits(balance: number): string {
 	if (balance >= 1000) {
@@ -130,6 +137,13 @@ function makeProviderConfig(organizationId?: string) {
 export default async function (pi: ExtensionAPI) {
 	const startupAccess = getKiloAccess();
 	let preferences = loadKiloPreferences({ cwd: process.cwd(), projectTrusted: false });
+
+	const shouldShowAmbientKiloUi = (provider: string | undefined): boolean =>
+		provider === "kilo" || preferences.display.showForOtherProviders;
+
+	const clearAmbientKiloStatuses = (ctx: { ui: { setStatus(key: string, value: undefined): void } }): void => {
+		for (const key of KILO_STATUS_KEYS) ctx.ui.setStatus(key, undefined);
+	};
 
 	// Fetch models at load time so the provider is immediately usable for
 	// --list-models, --model selection, and print mode before session_start fires.
@@ -223,6 +237,11 @@ export default async function (pi: ExtensionAPI) {
 		});
 		const access = getKiloAccess();
 		const usagePeriods = preferences.usage.periods;
+
+		if (ctx.hasUI && !shouldShowAmbientKiloUi(ctx.model?.provider)) {
+			clearAmbientKiloStatuses(ctx);
+			return;
+		}
 
 		// Clear a stale credit status after logout when an interactive UI is available.
 		if (!access) {
@@ -345,6 +364,8 @@ export default async function (pi: ExtensionAPI) {
 	});
 
 	pi.on("session_start", async (_event, ctx) => {
-		if (preferences.footer.custom) installCustomFooter(pi, ctx, preferences.credits.enabled);
+		if (preferences.footer.custom && shouldShowAmbientKiloUi(ctx.model?.provider)) {
+			installCustomFooter(pi, ctx, preferences.credits.enabled);
+		}
 	});
 }

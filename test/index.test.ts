@@ -101,7 +101,7 @@ test("hides ambient Kilo UI at startup for another provider", async () => {
 	await kiloExtension({ registerProvider: vi.fn(), on: runtime.on } as never);
 	await Promise.all(handlers(runtime.on, "session_start").map((run) => run({}, runtime.context)));
 
-	expect(runtime.context.ui.setFooter).toHaveBeenCalledWith(undefined);
+	expect(runtime.context.ui.setFooter).not.toHaveBeenCalled();
 	for (const key of ["kilo-credits", "kilo-usage-day", "kilo-usage-week", "kilo-usage-month", "kilo-usage-year"]) {
 		expect(runtime.setStatus).toHaveBeenCalledWith(key, undefined);
 	}
@@ -132,6 +132,7 @@ test("exposes Kilo credits when the custom footer is disabled", async () => {
 		.filter(([event]) => event === "session_start")
 		.map(([, handler]) => handler as (event: unknown, context: unknown) => Promise<void>);
 	const context = {
+		model: { provider: "kilo" },
 		hasUI: true,
 		ui: { setFooter: vi.fn(), setStatus, theme: { fg: vi.fn((_tone, text) => text) } },
 		modelRegistry: { registerProvider: vi.fn() },
