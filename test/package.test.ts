@@ -24,7 +24,7 @@ test("provides strict type checking against one pinned Pi version", () => {
 	expect(packageJson.devDependencies["@types/node"]).toMatch(/^\d+\.\d+\.\d+$/);
 
 	const piVersion = packageJson.devDependencies["@earendil-works/pi-coding-agent"];
-	expect(piVersion).toBe("0.84.4");
+	expect(piVersion).toBe("0.85.0");
 	expect(packageJson.devDependencies["@earendil-works/pi-ai"]).toBe(piVersion);
 	expect(packageJson.devDependencies["@earendil-works/pi-tui"]).toBe(piVersion);
 
