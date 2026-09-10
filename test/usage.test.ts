@@ -49,7 +49,7 @@ describe("createUsageRefresher", () => {
 		const setStatus = vi.fn();
 		const refresher = createUsageRefresher({ fetchUsageEntries, now: () => today });
 
-		refresher.refresh(access, ["day"], { setStatus, accent: (text) => text });
+		refresher.refresh(access, ["day"], { setStatus });
 
 		await vi.waitFor(() => {
 			expect(setStatus).toHaveBeenCalledWith("kilo-usage-day", "💸 $1.23 today");
@@ -69,7 +69,7 @@ describe("createUsageRefresher", () => {
 		const setStatus = vi.fn();
 		const refresher = createUsageRefresher({ fetchUsageEntries, now: () => today });
 
-		refresher.refresh(access, [period], { setStatus, accent: (text) => text });
+		refresher.refresh(access, [period], { setStatus });
 
 		await vi.waitFor(() => {
 			expect(setStatus).toHaveBeenCalledWith(`kilo-usage-${period}`, expectedStatus);
@@ -87,7 +87,7 @@ describe("createUsageRefresher", () => {
 		const setStatus = vi.fn();
 		const refresher = createUsageRefresher({ fetchUsageEntries, now: () => today });
 
-		refresher.refresh(access, ["week", "month"], { setStatus, accent: (text) => text });
+		refresher.refresh(access, ["week", "month"], { setStatus });
 
 		await vi.waitFor(() => {
 			expect(setStatus).toHaveBeenCalledWith("kilo-usage-week", "💸 $3.00 this week");
@@ -100,7 +100,7 @@ describe("createUsageRefresher", () => {
 		const fetchUsageEntries = vi.fn();
 		const refresher = createUsageRefresher({ fetchUsageEntries });
 
-		refresher.refresh(access, [], { setStatus: vi.fn(), accent: (text) => text });
+		refresher.refresh(access, [], { setStatus: vi.fn() });
 
 		expect(fetchUsageEntries).not.toHaveBeenCalled();
 	});
@@ -110,7 +110,7 @@ describe("createUsageRefresher", () => {
 		const setStatus = vi.fn();
 		const refresher = createUsageRefresher({ fetchUsageEntries });
 
-		refresher.refresh(access, ["day"], { setStatus, accent: (text) => text });
+		refresher.refresh(access, ["day"], { setStatus });
 
 		await vi.waitFor(() => expect(fetchUsageEntries).toHaveBeenCalledOnce());
 		expect(setStatus).not.toHaveBeenCalled();
@@ -122,7 +122,7 @@ describe("createUsageRefresher", () => {
 		const fetchUsageEntries = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
 		const setStatus = vi.fn();
 		const refresher = createUsageRefresher({ fetchUsageEntries, now: () => today });
-		const presentation = { setStatus, accent: (text: string) => text };
+		const presentation = { setStatus };
 
 		refresher.refresh(access, ["day"], presentation);
 		refresher.refresh({ token: "newest-token" }, ["day"], presentation);

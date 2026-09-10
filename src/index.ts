@@ -32,6 +32,7 @@ import {
 import { loadKiloPreferences } from "./config.ts";
 import { installCustomFooter } from "./footer.ts";
 import { streamKiloResponses } from "./responses.ts";
+import { createThemeStatusPublisher } from "./theme-status.ts";
 
 import { createUsageRefresher } from "./usage.ts";
 
@@ -142,11 +143,12 @@ export default async function (pi: KiloExtensionApi) {
 
 	let kiloFooterInstalled = false;
 	let ambientUiRevision = 0;
+	const themeStatuses = createThemeStatusPublisher();
 	const shouldShowAmbientKiloUi = (provider: string | undefined): boolean =>
 		provider === "kilo" || preferences.display.showForOtherProviders;
 
 	const clearAmbientKiloStatuses = (ctx: ExtensionContext): void => {
-		for (const key of KILO_STATUS_KEYS) ctx.ui.setStatus(key, undefined);
+		themeStatuses.clear(ctx, KILO_STATUS_KEYS);
 	};
 
 	const reconcileAmbientKiloUi = (ctx: ExtensionContext, provider: string | undefined): boolean => {
@@ -171,7 +173,7 @@ export default async function (pi: KiloExtensionApi) {
 
 	const publishCredits = (ctx: ExtensionContext, balance: number, revision: number): void => {
 		if (revision !== ambientUiRevision || !shouldShowAmbientKiloUi(ctx.model?.provider)) return;
-		ctx.ui.setStatus("kilo-credits", ctx.ui.theme.fg("accent", `💰 ${formatCredits(balance)}`));
+		themeStatuses.set(ctx, "kilo-credits", `💰 ${formatCredits(balance)}`);
 	};
 
 	// Fetch models at load time so the provider is immediately usable for
@@ -260,6 +262,7 @@ export default async function (pi: KiloExtensionApi) {
 	// After session starts, pre-fetch all models if already logged in so
 	// modifyModels has data to work with. Also fetch and display credits.
 	pi.on("session_start", async (_event, ctx) => {
+		themeStatuses.install(ctx);
 		preferences = loadKiloPreferences({
 			cwd: ctx.cwd ?? process.cwd(),
 			projectTrusted: ctx.isProjectTrusted?.() ?? false,
@@ -271,14 +274,13 @@ export default async function (pi: KiloExtensionApi) {
 
 		// Clear a stale credit status after logout when an interactive UI is available.
 		if (!access) {
-			if (ctx.hasUI) ctx.ui.setStatus("kilo-credits", undefined);
+			if (ctx.hasUI) themeStatuses.set(ctx, "kilo-credits", undefined);
 			return;
 		}
 
 		if (showAmbientUi && ctx.hasUI && usagePeriods.length > 0) {
 			usageRefresher.refresh(access, usagePeriods, {
-				setStatus: (key, value) => ctx.ui.setStatus(key, value),
-				accent: (text) => ctx.ui.theme.fg("accent", text),
+				setStatus: (key, value) => themeStatuses.set(ctx, key, value),
 			});
 		}
 
@@ -328,8 +330,7 @@ export default async function (pi: KiloExtensionApi) {
 		const usagePeriods = preferences.usage.periods;
 		if (usagePeriods.length > 0) {
 			usageRefresher.refresh(access, usagePeriods, {
-				setStatus: (key, value) => ctx.ui.setStatus(key, value),
-				accent: (text) => ctx.ui.theme.fg("accent", text),
+				setStatus: (key, value) => themeStatuses.set(ctx, key, value),
 			});
 		}
 
@@ -357,8 +358,7 @@ export default async function (pi: KiloExtensionApi) {
 
 		if (usagePeriods.length > 0) {
 			usageRefresher.refresh(access, usagePeriods, {
-				setStatus: (key, value) => ctx.ui.setStatus(key, value),
-				accent: (text) => ctx.ui.theme.fg("accent", text),
+				setStatus: (key, value) => themeStatuses.set(ctx, key, value),
 			});
 		}
 
@@ -371,6 +371,10 @@ export default async function (pi: KiloExtensionApi) {
 		} catch (error) {
 			console.warn("[kilo] Failed to fetch balance on turn end:", error instanceof Error ? error.message : error);
 		}
+	});
+
+	pi.on("session_shutdown", (_event, ctx) => {
+		themeStatuses.dispose(ctx);
 	});
 
 	// On first use of a Kilo model without login, print ToS notice.

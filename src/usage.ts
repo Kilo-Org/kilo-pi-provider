@@ -7,7 +7,6 @@ const USAGE_STATUS_PREFIX = "kilo-usage-";
 
 export interface UsageStatusPresentation {
 	setStatus(key: string, value: string | undefined): void;
-	accent(text: string): string;
 }
 
 interface UsageRefreshRequest {
@@ -85,10 +84,7 @@ export function createUsageRefresher(options: UsageRefresherOptions) {
 
 			for (const period of request.periods) {
 				const spend = sumUsageForPeriod(entries, period, now());
-				request.presentation.setStatus(
-					getUsageStatusKey(period),
-					request.presentation.accent(formatUsage(spend, period)),
-				);
+				request.presentation.setStatus(getUsageStatusKey(period), formatUsage(spend, period));
 			}
 		} catch {
 			// Usage is a background status; never let it reject a Pi lifecycle handler.
