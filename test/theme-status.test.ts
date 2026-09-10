@@ -73,11 +73,16 @@ test("clears raw status state and removes the sync component on disposal", () =>
 	});
 });
 
-test.each([
-	["RPC mode", "rpc" as const, true],
-	["a context without UI", "tui" as const, false],
-])("does not mount a TUI component in %s", (_name, mode, hasUI) => {
-	const fixture = createFixture(mode, hasUI);
+test("does not mount a TUI component in RPC mode", () => {
+	const fixture = createFixture("rpc");
+	const publisher = createThemeStatusPublisher();
+	publisher.install(fixture.context);
+
+	expect(fixture.setWidget).not.toHaveBeenCalled();
+});
+
+test("does not mount a TUI component without a UI", () => {
+	const fixture = createFixture("tui", false);
 	const publisher = createThemeStatusPublisher();
 	publisher.install(fixture.context);
 
