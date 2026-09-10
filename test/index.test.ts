@@ -326,15 +326,37 @@ function createRuntime(
 	vi.stubGlobal("fetch", fetchMock);
 	const on = vi.fn();
 	const setStatus = vi.fn();
+	const setWidget = vi.fn();
+	const theme = {
+		fg: vi.fn((_tone: string, text: string) => text),
+		getFgAnsi: vi.fn(() => "dark-accent"),
+	};
 	const context = {
 		model: { provider: options.provider ?? "kilo" },
+		mode: "tui",
 		hasUI: true,
-		ui: { setFooter: vi.fn(), setStatus, theme: { fg: vi.fn((_tone, text) => text) } },
+		ui: { setFooter: vi.fn(), setStatus, setWidget, theme },
 		modelRegistry: { registerProvider: vi.fn() },
 	};
 
-	return { context, fetchMock, on, setStatus };
+	return { context, fetchMock, on, setStatus, setWidget, theme };
 }
+
+test("session lifecycle installs and removes theme status synchronization", async () => {
+	const runtime = createRuntime();
+
+	await kiloExtension(extensionApi(vi.fn(), runtime.on));
+	await handler(runtime.on, "session_start")({}, runtime.context);
+
+	expect(runtime.setWidget).toHaveBeenCalledWith("kilo-theme-sync", expect.any(Function), {
+		placement: "belowEditor",
+	});
+
+	await handler(runtime.on, "session_shutdown")({}, runtime.context);
+	expect(runtime.setWidget).toHaveBeenLastCalledWith("kilo-theme-sync", undefined, {
+		placement: "belowEditor",
+	});
+});
 
 test("session_start does not request balance after switching away during catalog refresh", async () => {
 	const sessionCatalogResponse = deferred<Response>();
