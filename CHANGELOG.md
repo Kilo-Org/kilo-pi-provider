@@ -6,6 +6,10 @@ Release versions use calendar versioning: `YYYY.MM.PATCH`. `PATCH` starts at `0`
 
 ## [Unreleased]
 
+### Added
+
+- Recolor Kilo credit and usage statuses immediately when Pi switches themes.
+
 ## [2026.09.0] - 2026-09-03
 
 ### Breaking Changes
