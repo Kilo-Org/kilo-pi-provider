@@ -49,6 +49,12 @@ This opens your browser for device authorization. When your account belongs to o
 
 You can also set `KILO_API_KEY` directly instead of using the login flow. Set `KILO_ORG_ID` or `KILOCODE_ORGANIZATION_ID` to bill and filter models for an organization account.
 
+### Usage popup
+
+Run `/kilo-usage` in the interactive TUI after signing in to inspect usage for your personal account or the selected organization. It makes one on-demand yearly grouped request—there is no polling—and summarizes UTC day, week, month, and calendar-year periods.
+
+The **Usage** tab shows USD spend plus input, output, cache-read, and cache-write tokens. Press `Tab`, `Shift+Tab`, or the arrow keys to switch to **Models**, which aggregates the current UTC year by model. Press `Esc` or `Ctrl+C` to close the popup.
+
 ### Footer
 
 When a Kilo model is selected, Kilo replaces Pi's footer by default to show usage and credits. Selecting a model from another provider restores Pi's footer and hides Kilo's ambient statuses. To keep Kilo's footer and statuses visible for models from other providers, set:

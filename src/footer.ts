@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
+import { formatTokens } from "./format.ts";
 
 /** The Pi extension surface consumed by the custom footer. */
 export type FooterContext = {
@@ -19,14 +20,6 @@ export function usesCustomFooter(): boolean {
 export function installCustomFooter(pi: FooterExtensionAPI, ctx: FooterContext, creditsEnabled: boolean): void {
 	ctx.ui.setFooter((tui, theme, footerData) => {
 		const unsubBranch = footerData.onBranchChange(() => tui.requestRender());
-
-		const formatTokens = (count: number): string => {
-			if (count < 1000) return count.toString();
-			if (count < 10000) return `${(count / 1000).toFixed(1)}k`;
-			if (count < 1000000) return `${Math.round(count / 1000)}k`;
-			if (count < 10000000) return `${(count / 1000000).toFixed(1)}M`;
-			return `${Math.round(count / 1000000)}M`;
-		};
 
 		return {
 			dispose() {

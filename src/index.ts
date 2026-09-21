@@ -14,12 +14,20 @@ import { isFreeModel, mapOpenRouterModel, type OpenRouterModel, parsePrice } fro
 
 export { parsePrice };
 
-import type { ExtensionAPI, ExtensionContext, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	ExtensionContext,
+	KeybindingsManager,
+	ProviderModelConfig,
+	Theme,
+} from "@earendil-works/pi-coding-agent";
 import {
 	fetchKiloBalance,
 	fetchKiloUsageEntries,
 	KILO_API_BASE,
 	KILO_ORG_HEADER,
+	type KiloAccess,
+	type KiloUsageEntry,
 	withOrganizationHeader,
 } from "./api.ts";
 import {
@@ -34,7 +42,7 @@ import { installCustomFooter } from "./footer.ts";
 import { streamKiloResponses } from "./responses.ts";
 import { createThemeStatusPublisher } from "./theme-status.ts";
 
-import { createUsageRefresher } from "./usage.ts";
+import { createUsagePopup, createUsageRefresher } from "./usage.ts";
 
 // =============================================================================
 // Constants
@@ -135,7 +143,92 @@ function makeProviderConfig(organizationId?: string) {
 // Extension Entry Point
 // =============================================================================
 
-export type KiloExtensionApi = Pick<ExtensionAPI, "getThinkingLevel" | "on" | "registerProvider">;
+export type KiloExtensionApi = Pick<ExtensionAPI, "getThinkingLevel" | "on" | "registerProvider" | "registerCommand">;
+
+interface UsagePopupComponent {
+	invalidate(): void;
+	setState(entries: KiloUsageEntry[] | null, error?: string): void;
+	handleInput(data: string): void;
+	render(width: number): string[];
+}
+export interface UsageCommandContext {
+	hasUI: boolean;
+	mode: string;
+	ui: {
+		custom(
+			factory: (
+				tui: { requestRender(): void },
+				theme: Pick<Theme, "fg">,
+				keybindings: Pick<KeybindingsManager, never>,
+				done: (result: undefined) => void,
+			) => UsagePopupComponent,
+			options: { overlay: boolean; overlayOptions: { anchor: "center" } },
+		): Promise<void>;
+		notify(message: string, type: "warning"): void;
+	};
+}
+
+export interface UsageCommandOptions {
+	getAccess(): KiloAccess | undefined;
+	fetchUsageEntries?(
+		access: KiloAccess,
+		period: "year",
+		options: { groupByModel: true; signal: AbortSignal },
+	): Promise<KiloUsageEntry[] | null>;
+}
+
+export function createUsageCommandHandler(options: UsageCommandOptions) {
+	return async (ctx: UsageCommandContext): Promise<void> => {
+		if (!ctx.hasUI || ctx.mode !== "tui") {
+			ctx.ui.notify("Usage is available only in the interactive TUI.", "warning");
+			return;
+		}
+		const access = options.getAccess();
+		if (!access) {
+			ctx.ui.notify("Sign in to Kilo to view usage.", "warning");
+			return;
+		}
+		const controller = new AbortController();
+		let popup: UsagePopupComponent | undefined;
+		let loadedEntries: KiloUsageEntry[] | null | undefined;
+		let loadError: string | undefined;
+		let tui: { requestRender(): void } | undefined;
+		let done: ((result: undefined) => void) | undefined;
+		const close = (): void => {
+			controller.abort();
+			done?.(undefined);
+		};
+		const fetchResult = (options.fetchUsageEntries ?? fetchKiloUsageEntries)(access, "year", {
+			groupByModel: true,
+			signal: controller.signal,
+		})
+			.then((entries) => {
+				if (entries === null) {
+					loadError = "Unable to load usage.";
+					popup?.setState(null, loadError);
+				} else {
+					loadedEntries = entries;
+					popup?.setState(entries);
+				}
+				tui?.requestRender();
+			})
+			.catch(() => {
+				loadError = "Unable to load usage.";
+				popup?.setState(null, loadError);
+				tui?.requestRender();
+			});
+		await ctx.ui.custom(
+			(nextTui, theme, _keybindings, nextDone) => {
+				tui = nextTui;
+				done = nextDone;
+				popup = createUsagePopup({ theme, onClose: close, entries: loadedEntries ?? null, error: loadError });
+				return popup;
+			},
+			{ overlay: true, overlayOptions: { anchor: "center" } },
+		);
+		await fetchResult;
+	};
+}
 
 export default async function (pi: KiloExtensionApi) {
 	const startupAccess = getKiloAccess();
@@ -257,6 +350,11 @@ export default async function (pi: KiloExtensionApi) {
 		...makeProviderConfig(getEnvOrganizationId()),
 		models: freeModels,
 		oauth: makeOAuthConfig(),
+	});
+
+	pi.registerCommand("kilo-usage", {
+		description: "Show Kilo usage",
+		handler: async (_args, ctx) => createUsageCommandHandler({ getAccess: getKiloAccess })(ctx),
 	});
 
 	// After session starts, pre-fetch all models if already logged in so
