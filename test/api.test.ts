@@ -99,7 +99,16 @@ describe("fetchKiloUsageEntries", () => {
 			new Response(
 				JSON.stringify({
 					usage: [
-						{ date: "2026-08-22", total_cost: 1_250_000 },
+						{
+							date: "2026-08-22",
+							model: "kilo/code",
+							total_cost: 1_250_000,
+							request_count: 3,
+							total_input_tokens: 100,
+							total_output_tokens: 200,
+							total_cache_write_tokens: 30,
+							total_cache_hit_tokens: 40,
+						},
 						{ date: "invalid", total_cost: 10 },
 						{ date: "2026-08-21", total_cost: "bad" },
 					],
@@ -109,11 +118,19 @@ describe("fetchKiloUsageEntries", () => {
 		);
 		vi.stubGlobal("fetch", fetchMock);
 
-		await expect(fetchKiloUsageEntries({ token: "access-token" }, "week")).resolves.toEqual([
-			{ date: "2026-08-22", totalCostMicrodollars: 1_250_000 },
+		await expect(fetchKiloUsageEntries({ token: "access-token" }, "week", { groupByModel: true })).resolves.toEqual([
+			{
+				date: "2026-08-22",
+				model: "kilo/code",
+				totalCostMicrodollars: 1_250_000,
+				totalInputTokens: 100,
+				totalOutputTokens: 200,
+				totalCacheWriteTokens: 30,
+				totalCacheHitTokens: 40,
+			},
 		]);
 		expect(fetchMock).toHaveBeenCalledWith(
-			`${KILO_API_BASE}/api/profile/usage?period=week&viewType=personal`,
+			`${KILO_API_BASE}/api/profile/usage?period=week&viewType=personal&groupByModel=true`,
 			expect.objectContaining({ headers: { Authorization: "Bearer access-token" } }),
 		);
 	});

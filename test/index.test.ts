@@ -273,7 +273,7 @@ type RegisterProvider = ReturnType<typeof vi.fn>;
 
 function extensionApi(registerProvider: RegisterProvider, on: ExtensionOn): KiloExtensionApi {
 	// SAFETY: these spies implement the extension methods used during initialization; calls are verified by the tests.
-	return { registerProvider, on, getThinkingLevel: vi.fn() } as KiloExtensionApi;
+	return { registerProvider, on, getThinkingLevel: vi.fn(), registerCommand: vi.fn() } as KiloExtensionApi;
 }
 
 function extensionHandler(run: ReturnType<typeof vi.fn>): ExtensionHandler {
