@@ -1,6 +1,9 @@
+import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { isRetryableAssistantError, type Model } from "@earendil-works/pi-ai";
+import { type Context, isRetryableAssistantError, type Model, normalizeContext } from "@earendil-works/pi-ai";
+import Type from "typebox";
 import { afterEach, expect, test, vi } from "vitest";
+import { mapOpenRouterModel } from "../src/models.ts";
 import {
 	normalizeResponseFailedEvent,
 	normalizeResponsesFetch,
@@ -25,8 +28,78 @@ const model: Model<"openai-responses"> = {
 	maxTokens: 16_000,
 };
 
+const fixture = readFileSync(new URL("./fixtures/malformed-response-failed.sse", import.meta.url), "utf8");
+
+test.each(["legacy", "transcript"])("preserves system prompts and tools in %s context", async (kind) => {
+	const responseFetch = vi
+		.fn<typeof fetch>()
+		.mockResolvedValue(new Response(fixture, { headers: { "Content-Type": "text/event-stream" } }));
+	const onPayload = vi.fn();
+	const context: Context = {
+		systemPrompt: "Use the lookup tool.",
+		messages: [{ role: "user", content: "Find the answer", timestamp: 0 }],
+		tools: [{ name: "lookup", description: "Look up an answer", parameters: Type.Object({ query: Type.String() }) }],
+	};
+
+	await streamKiloResponses(model, kind === "transcript" ? normalizeContext(context) : context, {
+		apiKey: "test-key",
+		fetch: responseFetch,
+		onPayload,
+		maxRetries: 0,
+	}).result();
+
+	expect(onPayload).toHaveBeenCalledWith(
+		expect.objectContaining({
+			input: expect.arrayContaining([{ role: "system", content: "Use the lookup tool." }]),
+			tools: expect.arrayContaining([
+				expect.objectContaining({ type: "function", name: "lookup", description: "Look up an answer" }),
+			]),
+		}),
+		model,
+	);
+});
+
+test("omits the OpenAI session header and long-cache retention on gateway requests", async () => {
+	const responseFetch = vi
+		.fn<typeof fetch>()
+		.mockResolvedValue(new Response(fixture, { headers: { "Content-Type": "text/event-stream" } }));
+	const kiloModel: Model<"openai-responses"> = {
+		...model,
+		...mapOpenRouterModel({
+			id: "openai/gpt-test",
+			name: model.name,
+			context_length: model.contextWindow,
+			opencode: { ai_sdk_provider: "openai" },
+		}),
+		api: "openai-responses",
+	};
+	const sessionId = "kilo-session";
+
+	await streamKiloResponses(
+		kiloModel,
+		{ messages: [] },
+		{
+			apiKey: "test-key",
+			fetch: responseFetch,
+			sessionId,
+			cacheRetention: "long",
+			maxRetries: 0,
+		},
+	).result();
+
+	expect(responseFetch).toHaveBeenCalledOnce();
+	const call = responseFetch.mock.calls[0];
+	assert(call);
+	const request = new Request(...call);
+	const payload: unknown = await request.json();
+
+	expect(request.headers.has("session_id")).toBe(false);
+	expect(request.headers.get("x-client-request-id")).toBe(sessionId);
+	expect(payload).not.toHaveProperty("prompt_cache_retention");
+	expect(payload).toHaveProperty("prompt_cache_key", sessionId);
+});
+
 test("classifies malformed Responses failures by their error type", async () => {
-	const fixture = readFileSync(new URL("./fixtures/malformed-response-failed.sse", import.meta.url), "utf8");
 	const responseFetch = vi.fn<typeof fetch>().mockResolvedValue(
 		new Response(fixture, {
 			status: 200,

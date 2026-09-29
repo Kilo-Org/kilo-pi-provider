@@ -2,6 +2,8 @@ import type { Api } from "@earendil-works/pi-ai";
 import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import { KILO_API_BASE } from "./api.ts";
 
+export type KiloChatModelConfig = Extract<ProviderModelConfig, { type?: "chat" }>;
+
 const KILO_OPENROUTER_BASE = `${KILO_API_BASE}/api/openrouter`;
 
 export interface OpenRouterModel {
@@ -67,8 +69,6 @@ type KiloModelCompat = {
 	cacheControlFormat?: "anthropic";
 	requiresReasoningContentOnAssistantMessages?: boolean;
 	supportsStore?: boolean;
-	sendSessionIdHeader?: boolean;
-	supportsLongCacheRetention?: boolean;
 };
 
 function shouldUseResponsesApi(m: OpenRouterModel): boolean {
@@ -90,14 +90,14 @@ function shouldUseResponsesApi(m: OpenRouterModel): boolean {
 	);
 }
 
-function getKiloModelCompat(m: OpenRouterModel, api: Api | undefined): ProviderModelConfig["compat"] {
+function getKiloModelCompat(m: OpenRouterModel, api: Api | undefined): KiloChatModelConfig["compat"] {
 	if (api === "openai-responses") {
 		return {
 			// Kilo/OpenRouter-compatible responses endpoints do not need OpenAI's
 			// session_id header, and long prompt-cache retention is provider-specific.
-			sendSessionIdHeader: false,
+			sessionAffinityFormat: "openai-nosession",
 			supportsLongCacheRetention: false,
-		} as ProviderModelConfig["compat"];
+		};
 	}
 
 	const compat: KiloModelCompat = {
@@ -115,7 +115,7 @@ function getKiloModelCompat(m: OpenRouterModel, api: Api | undefined): ProviderM
 		compat.requiresReasoningContentOnAssistantMessages = true;
 	}
 
-	return compat as ProviderModelConfig["compat"];
+	return compat;
 }
 
 function mapVariantEffort(
@@ -132,7 +132,7 @@ function mapVariantEffort(
 
 function thinkingLevelMapFromVariants(
 	variants: NonNullable<OpenRouterModel["opencode"]>["variants"],
-): ProviderModelConfig["thinkingLevelMap"] | undefined {
+): KiloChatModelConfig["thinkingLevelMap"] | undefined {
 	if (!variants || Object.keys(variants).length === 0) return undefined;
 
 	const map: Partial<Record<PiThinkingLevel, string | null>> = {};
@@ -144,10 +144,10 @@ function thinkingLevelMapFromVariants(
 		map[level] = effort === undefined ? null : effort;
 	}
 
-	return map as ProviderModelConfig["thinkingLevelMap"];
+	return map;
 }
 
-function getKiloThinkingLevelMap(m: OpenRouterModel): ProviderModelConfig["thinkingLevelMap"] | undefined {
+function getKiloThinkingLevelMap(m: OpenRouterModel): KiloChatModelConfig["thinkingLevelMap"] | undefined {
 	const fromVariants = thinkingLevelMapFromVariants(m.opencode?.variants);
 	if (/^deepseek\/deepseek-v4-(flash|pro)(?:-|$)/.test(m.id)) {
 		return { ...fromVariants, max: "max" };
@@ -170,7 +170,7 @@ function getKiloThinkingLevelMap(m: OpenRouterModel): ProviderModelConfig["think
 	return undefined;
 }
 
-export function mapOpenRouterModel(m: OpenRouterModel): ProviderModelConfig {
+export function mapOpenRouterModel(m: OpenRouterModel): KiloChatModelConfig {
 	const inputModalities = m.architecture?.input_modalities ?? ["text"];
 	const supportsImages = inputModalities.includes("image");
 	const supportsReasoning = m.supported_parameters?.includes("reasoning") ?? false;

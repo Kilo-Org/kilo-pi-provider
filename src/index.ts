@@ -10,17 +10,17 @@
  */
 
 import type { Api, Model, OAuthCredentials, OAuthLoginCallbacks } from "@earendil-works/pi-ai";
-import { isFreeModel, mapOpenRouterModel, type OpenRouterModel, parsePrice } from "./models.ts";
+import {
+	isFreeModel,
+	type KiloChatModelConfig,
+	mapOpenRouterModel,
+	type OpenRouterModel,
+	parsePrice,
+} from "./models.ts";
 
 export { parsePrice };
 
-import type {
-	ExtensionAPI,
-	ExtensionContext,
-	KeybindingsManager,
-	ProviderModelConfig,
-	Theme,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, KeybindingsManager, Theme } from "@earendil-works/pi-coding-agent";
 import {
 	fetchKiloBalance,
 	fetchKiloUsageEntries,
@@ -75,7 +75,7 @@ async function fetchKiloModels(options?: {
 	token?: string;
 	organizationId?: string;
 	freeOnly?: boolean;
-}): Promise<ProviderModelConfig[]> {
+}): Promise<KiloChatModelConfig[]> {
 	const headers: Record<string, string> = {
 		"Content-Type": "application/json",
 		"User-Agent": "pi-kilo-provider",
@@ -271,8 +271,8 @@ export default async function (pi: KiloExtensionApi) {
 
 	// Fetch models at load time so the provider is immediately usable for
 	// --list-models, --model selection, and print mode before session_start fires.
-	let freeModels: ProviderModelConfig[] = [];
-	let cachedAllModels: ProviderModelConfig[] = [];
+	let freeModels: KiloChatModelConfig[] = [];
+	let cachedAllModels: KiloChatModelConfig[] = [];
 	const usageRefresher = createUsageRefresher({ fetchUsageEntries: fetchKiloUsageEntries });
 	try {
 		if (startupAccess) {
