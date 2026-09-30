@@ -1,6 +1,6 @@
-import type { Api } from "@earendil-works/pi-ai";
+import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
-import { KILO_API_BASE } from "./api.ts";
+import { KILO_API_BASE, withOrganizationHeader } from "./api.ts";
 
 export type KiloChatModelConfig = Extract<ProviderModelConfig, { type?: "chat" }>;
 
@@ -168,6 +168,51 @@ function getKiloThinkingLevelMap(m: OpenRouterModel): KiloChatModelConfig["think
 	}
 
 	return undefined;
+}
+
+export function selectKiloCatalogModels(
+	models: readonly OpenRouterModel[],
+	options: { freeOnly?: boolean },
+): KiloChatModelConfig[] {
+	return models
+		.filter((m) => {
+			// Skip image generation models
+			const outputMods = m.architecture?.output_modalities ?? [];
+			if (outputMods.includes("image")) return false;
+			// When unauthenticated, only show free models
+			if (options.freeOnly && !isFreeModel(m)) return false;
+			return true;
+		})
+		.map(mapOpenRouterModel);
+}
+
+export function mergeKiloCatalogModels(
+	models: Model<Api>[],
+	catalog: readonly KiloChatModelConfig[],
+	organizationId?: string,
+): Model<Api>[] {
+	if (catalog.length === 0) return models;
+	// Use an existing kilo model as a template for provider metadata
+	const template = models.find((m) => m.provider === "kilo");
+	if (!template) return models;
+	const headers = organizationId ? withOrganizationHeader({}, organizationId) : undefined;
+	const nonKilo = models.filter((m) => m.provider !== "kilo");
+	const fullModels = catalog.map((m) => ({
+		...template,
+		id: m.id,
+		name: m.name,
+		api: m.api ?? template.api,
+		baseUrl: m.baseUrl ?? template.baseUrl,
+		reasoning: m.reasoning,
+		input: m.input,
+		cost: m.cost,
+		contextWindow: m.contextWindow,
+		maxTokens: m.maxTokens,
+		thinkingLevelMap: m.thinkingLevelMap,
+		headers,
+		compat: m.compat,
+	}));
+	return [...nonKilo, ...fullModels];
 }
 
 export function mapOpenRouterModel(m: OpenRouterModel): KiloChatModelConfig {

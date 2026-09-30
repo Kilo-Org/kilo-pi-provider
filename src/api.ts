@@ -1,8 +1,12 @@
 import Type from "typebox";
 import Value from "typebox/value";
+import type { OpenRouterModel } from "./models.ts";
+
 export const KILO_API_BASE = process.env.KILO_API_URL || "https://api.kilo.ai";
+export const KILO_GATEWAY_BASE = `${KILO_API_BASE}/api/gateway`;
 const KILO_PROFILE_ENDPOINT = `${KILO_API_BASE}/api/profile`;
 export const KILO_ORG_HEADER = "X-KiloCode-OrganizationId";
+const MODELS_FETCH_TIMEOUT_MS = 10_000;
 const USAGE_FETCH_TIMEOUT_MS = 10_000;
 
 export interface KiloAccess {
@@ -16,6 +20,41 @@ export function withOrganizationHeader(
 ): Record<string, string> {
 	if (!organizationId) return headers;
 	return { ...headers, [KILO_ORG_HEADER]: organizationId };
+}
+
+export interface KiloModelCatalogRequest {
+	token?: string;
+	organizationId?: string;
+}
+
+export async function fetchKiloModelCatalog(request: KiloModelCatalogRequest = {}): Promise<OpenRouterModel[]> {
+	const headers: Record<string, string> = {
+		"Content-Type": "application/json",
+		"User-Agent": "pi-kilo-provider",
+	};
+	if (request.token) {
+		headers.Authorization = `Bearer ${request.token}`;
+	}
+	const { organizationId } = request;
+	const modelsUrl = organizationId
+		? `${KILO_API_BASE}/api/organizations/${encodeURIComponent(organizationId)}/models`
+		: `${KILO_GATEWAY_BASE}/models`;
+
+	const response = await fetch(modelsUrl, {
+		headers: withOrganizationHeader(headers, organizationId),
+		signal: AbortSignal.timeout(MODELS_FETCH_TIMEOUT_MS),
+	});
+
+	if (!response.ok) {
+		throw new Error(`Failed to fetch models: ${response.status} ${response.statusText}`);
+	}
+
+	const json = (await response.json()) as { data?: OpenRouterModel[] };
+	if (!json.data || !Array.isArray(json.data)) {
+		throw new Error("Invalid models response: missing data array");
+	}
+
+	return json.data;
 }
 
 export interface KiloOrganization {
