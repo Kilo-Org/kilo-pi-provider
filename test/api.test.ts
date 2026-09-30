@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
 	fetchKiloBalance,
+	fetchKiloModelCatalog,
 	fetchKiloProfile,
 	fetchKiloUsageEntries,
 	KILO_API_BASE,
@@ -46,6 +47,82 @@ describe("withOrganizationHeader", () => {
 		withOrganizationHeader(headers, "organization-id");
 
 		expect(headers).toEqual({ Authorization: "Bearer token" });
+	});
+});
+
+describe("fetchKiloModelCatalog", () => {
+	const catalog = [{ id: "acme/model", name: "Acme Model", context_length: 128_000 }];
+	const catalogResponse = () => new Response(JSON.stringify({ data: catalog }), { status: 200 });
+
+	test("fetches the anonymous gateway catalog with a timeout", async () => {
+		const timeout = vi.spyOn(AbortSignal, "timeout");
+		const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(catalogResponse());
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(fetchKiloModelCatalog()).resolves.toEqual(catalog);
+
+		expect(timeout).toHaveBeenCalledWith(10_000);
+		expect(fetchMock).toHaveBeenCalledWith(`${KILO_API_BASE}/api/gateway/models`, {
+			headers: { "Content-Type": "application/json", "User-Agent": "pi-kilo-provider" },
+			signal: timeout.mock.results[0]?.value,
+		});
+	});
+
+	test("authenticates personal gateway catalog requests", async () => {
+		const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(catalogResponse());
+		vi.stubGlobal("fetch", fetchMock);
+
+		await fetchKiloModelCatalog({ token: "access-token" });
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			`${KILO_API_BASE}/api/gateway/models`,
+			expect.objectContaining({
+				headers: {
+					Authorization: "Bearer access-token",
+					"Content-Type": "application/json",
+					"User-Agent": "pi-kilo-provider",
+				},
+			}),
+		);
+	});
+
+	test("fetches an encoded organization catalog with organization headers", async () => {
+		const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(catalogResponse());
+		vi.stubGlobal("fetch", fetchMock);
+
+		await fetchKiloModelCatalog({ token: "access-token", organizationId: "team/one" });
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			`${KILO_API_BASE}/api/organizations/team%2Fone/models`,
+			expect.objectContaining({
+				headers: {
+					Authorization: "Bearer access-token",
+					"Content-Type": "application/json",
+					"User-Agent": "pi-kilo-provider",
+					"X-KiloCode-OrganizationId": "team/one",
+				},
+			}),
+		);
+	});
+
+	test("rejects a non-OK catalog response", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi
+				.fn<typeof fetch>()
+				.mockResolvedValue(new Response(null, { status: 503, statusText: "Service Unavailable" })),
+		);
+
+		await expect(fetchKiloModelCatalog()).rejects.toThrow("Failed to fetch models: 503 Service Unavailable");
+	});
+
+	test.each([
+		["missing", {}],
+		["not an array", { data: {} }],
+	])("rejects a catalog response whose data array is %s", async (_name, body) => {
+		vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(body))));
+
+		await expect(fetchKiloModelCatalog()).rejects.toThrow("Invalid models response: missing data array");
 	});
 });
 
