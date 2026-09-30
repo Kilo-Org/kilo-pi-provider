@@ -1,4 +1,4 @@
-import type { Api, Context, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
+import { type Api, type Context, type Model, normalizeContext, type SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/compat";
 
 const openAIResponses = openAIResponsesApi();
@@ -120,7 +120,7 @@ export function normalizeResponsesFetch(fetchImplementation: typeof fetch): type
 }
 
 export function streamKiloResponses(model: Model<Api>, context: Context, options?: SimpleStreamOptions) {
-	return openAIResponses.streamSimple(model, context, {
+	return openAIResponses.streamSimple(model, normalizeContext(context), {
 		...options,
 		fetch: normalizeResponsesFetch(options?.fetch ?? globalThis.fetch),
 	});

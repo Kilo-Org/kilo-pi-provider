@@ -6,6 +6,17 @@ Release versions use calendar versioning: `YYYY.MM.PATCH`. `PATCH` starts at `0`
 
 ## [Unreleased]
 
+## [2026.09.3] - 2026-09-29
+
+### Fixed
+
+- Declare Pi and TypeBox as host-provided peer dependencies to avoid extension-loader warnings and duplicate runtime modules.
+- Keep Kilo model registration and Responses streaming compatible with Pi 0.99.1, including prompts, tools, session headers, and cache settings.
+
+### Changed
+
+- Pin development and test Pi packages to 0.99.1 and TypeBox to 1.3.27.
+
 ## [2026.09.2] - 2026-09-21
 
 ### Added

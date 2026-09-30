@@ -7,7 +7,7 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const packageJson = JSON.parse(readFileSync(resolve(repositoryRoot, "package.json"), "utf8"));
 
 test("declares the current calendar-versioned release", () => {
-	expect(packageJson.version).toBe("2026.09.2");
+	expect(packageJson.version).toBe("2026.09.3");
 });
 
 test("declared Pi extension entry points exist", () => {
@@ -24,9 +24,10 @@ test("provides strict type checking against one pinned Pi version", () => {
 	expect(packageJson.devDependencies["@types/node"]).toMatch(/^\d+\.\d+\.\d+$/);
 
 	const piVersion = packageJson.devDependencies["@earendil-works/pi-coding-agent"];
-	expect(piVersion).toBe("0.85.1");
+	expect(piVersion).toBe("0.99.1");
 	expect(packageJson.devDependencies["@earendil-works/pi-ai"]).toBe(piVersion);
 	expect(packageJson.devDependencies["@earendil-works/pi-tui"]).toBe(piVersion);
+	expect(packageJson.devDependencies.typebox).toBe("1.3.27");
 
 	const tsconfig = JSON.parse(readFileSync(resolve(repositoryRoot, "tsconfig.json"), "utf8"));
 	expect(tsconfig).toMatchObject({
@@ -34,6 +35,15 @@ test("provides strict type checking against one pinned Pi version", () => {
 		include: ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"],
 	});
 });
+
+test.each(["typebox", "@earendil-works/pi-ai", "@earendil-works/pi-coding-agent", "@earendil-works/pi-tui"])(
+	"declares %s as a wildcard peer, not a runtime dependency",
+	(dependency) => {
+		expect(packageJson.dependencies?.[dependency]).toBeUndefined();
+		expect(packageJson.peerDependencies[dependency]).toBe("*");
+		expect(packageJson.devDependencies[dependency]).toMatch(/^\d+\.\d+\.\d+$/);
+	},
+);
 
 test("provides the upstream Pi Biome check", () => {
 	expect(packageJson.scripts.check).toBe("biome check --write --error-on-warnings .");

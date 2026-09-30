@@ -29,6 +29,18 @@ describe("mapOpenRouterModel", () => {
 		expect(responsesModel.baseUrl).toBe("https://api.kilo.ai/api/openrouter");
 	});
 
+	test("uses gateway-compatible Responses session affinity and cache settings", () => {
+		const model = mapOpenRouterModel({
+			...modelWithGatewayVariants,
+			opencode: { ...modelWithGatewayVariants.opencode, ai_sdk_provider: "openai" },
+		});
+
+		expect(model.compat).toEqual({
+			sessionAffinityFormat: "openai-nosession",
+			supportsLongCacheRetention: false,
+		});
+	});
+
 	test("maps gateway thinking variants", () => {
 		expect(mapOpenRouterModel(modelWithGatewayVariants).thinkingLevelMap).toEqual({
 			off: "none",

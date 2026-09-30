@@ -118,7 +118,7 @@ Install [Prek](https://github.com/j178/prek)'s pre-commit hook locally:
 npx prek install
 ```
 
-Before each commit it runs Biome, which applies safe formatting and lint fixes. If it changes files, review and stage those changes before committing again. The hook is not installed automatically so Pi package installation, which omits development dependencies, succeeds.
+Before each commit it runs Biome and TypeScript typechecking. Biome applies safe formatting and lint fixes; if it changes files, review and stage those changes before committing again. The hook is not installed automatically so Pi package installation, which omits development dependencies, succeeds.
 
 Run the checks and tests directly with:
 
@@ -129,7 +129,7 @@ npm test
 npm run test:coverage
 ```
 
-`typecheck` runs TypeScript in strict, no-emit mode against source, tests, and TypeScript configuration. It checks the extension against the pinned Pi API types and is intentionally not part of CI or the pre-commit hook.
+`typecheck` runs TypeScript in strict, no-emit mode against source, tests, and TypeScript configuration. It checks the extension against the pinned Pi API types and runs in CI and the installed Prek pre-commit hook.
 
 When changing TypeScript, run `npm run typecheck` and resolve every type error in the files you touch. Fix the underlying types or implementation; do not silence errors with `any`, unsafe casts, `@ts-ignore`, or weaker compiler settings.
 
