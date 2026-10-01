@@ -266,6 +266,43 @@ test("loads the organization catalog with KILO_API_KEY", async () => {
 	);
 });
 
+test("OAuth model refresh replaces Kilo models with the cached organization catalog", async () => {
+	setAuth({ kilo: { type: "oauth", access: "stored-access-token", accountId: "organization-id" } });
+	vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(catalogResponse()));
+	const registerProvider = vi.fn();
+
+	await kiloExtension(extensionApi(registerProvider, vi.fn()));
+	const oauth = registerProvider.mock.calls[0]?.[1]?.oauth;
+	const otherModel = { ...registeredModel, id: "other/model", provider: "other" };
+	const credentials = { access: "access-token", refresh: "access-token", expires: 0, accountId: "organization-id" };
+
+	expect(oauth.getApiKey(credentials)).toBe("access-token");
+	expect(oauth.modifyModels([registeredModel, otherModel], credentials)).toEqual([
+		otherModel,
+		expect.objectContaining({
+			id: "acme/code-model:free",
+			name: "Acme Code Model",
+			provider: "kilo",
+			api: "openai-completions",
+			baseUrl: registeredModel.baseUrl,
+			headers: { "X-KiloCode-OrganizationId": "organization-id" },
+		}),
+	]);
+});
+
+const registeredModel = {
+	id: "kilo/template",
+	name: "Kilo Template",
+	api: "openai-responses",
+	provider: "kilo",
+	baseUrl: "https://api.kilo.ai/api/gateway",
+	reasoning: false,
+	input: ["text"],
+	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+	contextWindow: 1_000,
+	maxTokens: 100,
+};
+
 type ExtensionHandler = (event: unknown, context: unknown) => Promise<unknown>;
 
 type ExtensionOn = ReturnType<typeof vi.fn>;

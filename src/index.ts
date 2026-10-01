@@ -10,23 +10,18 @@
  */
 
 import type { Api, Model, OAuthCredentials, OAuthLoginCallbacks } from "@earendil-works/pi-ai";
-import {
-	isFreeModel,
-	type KiloChatModelConfig,
-	mapOpenRouterModel,
-	type OpenRouterModel,
-	parsePrice,
-} from "./models.ts";
+import { type KiloChatModelConfig, mergeKiloCatalogModels, parsePrice, selectKiloCatalogModels } from "./models.ts";
 
 export { parsePrice };
 
 import type { ExtensionAPI, ExtensionContext, KeybindingsManager, Theme } from "@earendil-works/pi-coding-agent";
 import {
 	fetchKiloBalance,
+	fetchKiloModelCatalog,
 	fetchKiloUsageEntries,
-	KILO_API_BASE,
-	KILO_ORG_HEADER,
+	KILO_GATEWAY_BASE,
 	type KiloAccess,
+	type KiloModelCatalogRequest,
 	type KiloUsageEntry,
 	withOrganizationHeader,
 } from "./api.ts";
@@ -48,8 +43,6 @@ import { createUsagePopup, createUsageRefresher } from "./usage.ts";
 // Constants
 // =============================================================================
 
-const KILO_GATEWAY_BASE = `${KILO_API_BASE}/api/gateway`;
-const MODELS_FETCH_TIMEOUT_MS = 10_000;
 const KILO_TOS_URL = "https://kilo.ai/terms";
 const KILO_STATUS_KEYS = [
 	"kilo-credits",
@@ -71,48 +64,10 @@ function formatCredits(balance: number): string {
 // Dynamic Model Loading
 // =============================================================================
 
-async function fetchKiloModels(options?: {
-	token?: string;
-	organizationId?: string;
-	freeOnly?: boolean;
-}): Promise<KiloChatModelConfig[]> {
-	const headers: Record<string, string> = {
-		"Content-Type": "application/json",
-		"User-Agent": "pi-kilo-provider",
-	};
-	if (options?.token) {
-		headers.Authorization = `Bearer ${options.token}`;
-	}
-	const organizationId = options?.organizationId;
-	const requestHeaders = withOrganizationHeader(headers, organizationId);
-	const modelsUrl = organizationId
-		? `${KILO_API_BASE}/api/organizations/${encodeURIComponent(organizationId)}/models`
-		: `${KILO_GATEWAY_BASE}/models`;
-
-	const response = await fetch(modelsUrl, {
-		headers: requestHeaders,
-		signal: AbortSignal.timeout(MODELS_FETCH_TIMEOUT_MS),
-	});
-
-	if (!response.ok) {
-		throw new Error(`Failed to fetch models: ${response.status} ${response.statusText}`);
-	}
-
-	const json = (await response.json()) as { data?: OpenRouterModel[] };
-	if (!json.data || !Array.isArray(json.data)) {
-		throw new Error("Invalid models response: missing data array");
-	}
-
-	return json.data
-		.filter((m) => {
-			// Skip image generation models
-			const outputMods = m.architecture?.output_modalities ?? [];
-			if (outputMods.includes("image")) return false;
-			// When unauthenticated, only show free models
-			if (options?.freeOnly && !isFreeModel(m)) return false;
-			return true;
-		})
-		.map(mapOpenRouterModel);
+async function fetchKiloModels(
+	options: KiloModelCatalogRequest & { freeOnly?: boolean } = {},
+): Promise<KiloChatModelConfig[]> {
+	return selectKiloCatalogModels(await fetchKiloModelCatalog(options), options);
 }
 
 // =============================================================================
@@ -316,31 +271,8 @@ export default async function (pi: KiloExtensionApi) {
 			// Called by modelRegistry.refresh() when credentials exist.
 			// After logout, credentials are removed so this won't be called,
 			// leaving only the free models from config.models.
-			modifyModels: (models: Model<Api>[], cred: OAuthCredentials) => {
-				if (cachedAllModels.length === 0) return models;
-				const organizationId = getEffectiveOrganizationId(cred);
-				const orgHeaders = organizationId ? { [KILO_ORG_HEADER]: organizationId } : undefined;
-				// Use an existing kilo model as a template for provider metadata
-				const template = models.find((m) => m.provider === "kilo");
-				if (!template) return models;
-				const nonKilo = models.filter((m) => m.provider !== "kilo");
-				const fullModels = cachedAllModels.map((m) => ({
-					...template,
-					id: m.id,
-					name: m.name,
-					api: m.api ?? template.api,
-					baseUrl: m.baseUrl ?? template.baseUrl,
-					reasoning: m.reasoning,
-					input: m.input,
-					cost: m.cost,
-					contextWindow: m.contextWindow,
-					maxTokens: m.maxTokens,
-					thinkingLevelMap: m.thinkingLevelMap,
-					headers: orgHeaders,
-					compat: m.compat,
-				}));
-				return [...nonKilo, ...fullModels];
-			},
+			modifyModels: (models: Model<Api>[], cred: OAuthCredentials) =>
+				mergeKiloCatalogModels(models, cachedAllModels, getEffectiveOrganizationId(cred)),
 		};
 	}
 
