@@ -15,6 +15,7 @@ import { type KiloChatModelConfig, mergeKiloCatalogModels, parsePrice, selectKil
 export { parsePrice };
 
 import type { ExtensionAPI, ExtensionContext, KeybindingsManager, Theme } from "@earendil-works/pi-coding-agent";
+import { createAmbientKiloUi } from "./ambient-ui.ts";
 import {
 	fetchKiloBalance,
 	fetchKiloModelCatalog,
@@ -44,21 +45,6 @@ import { createUsagePopup, createUsageRefresher } from "./usage.ts";
 // =============================================================================
 
 const KILO_TOS_URL = "https://kilo.ai/terms";
-const KILO_STATUS_KEYS = [
-	"kilo-credits",
-	"kilo-usage-day",
-	"kilo-usage-week",
-	"kilo-usage-month",
-	"kilo-usage-year",
-] as const;
-
-function formatCredits(balance: number): string {
-	if (balance >= 1000) {
-		return `$${(balance / 1000).toFixed(1)}k`;
-	} else {
-		return `$${balance.toFixed(2)}`;
-	}
-}
 
 // =============================================================================
 // Dynamic Model Loading
@@ -189,46 +175,19 @@ export default async function (pi: KiloExtensionApi) {
 	const startupAccess = getKiloAccess();
 	let preferences = loadKiloPreferences({ cwd: process.cwd(), projectTrusted: false });
 
-	let kiloFooterInstalled = false;
-	let ambientUiRevision = 0;
 	const themeStatuses = createThemeStatusPublisher();
-	const shouldShowAmbientKiloUi = (provider: string | undefined): boolean =>
-		provider === "kilo" || preferences.display.showForOtherProviders;
-
-	const clearAmbientKiloStatuses = (ctx: ExtensionContext): void => {
-		themeStatuses.clear(ctx, KILO_STATUS_KEYS);
-	};
-
-	const reconcileAmbientKiloUi = (ctx: ExtensionContext, provider: string | undefined): boolean => {
-		ambientUiRevision += 1;
-		const visible = shouldShowAmbientKiloUi(provider);
-		if (!ctx.hasUI) return visible;
-
-		if (visible && preferences.footer.custom && !kiloFooterInstalled) {
-			installCustomFooter(pi, ctx, preferences.credits.enabled);
-			kiloFooterInstalled = true;
-		} else if ((!visible || !preferences.footer.custom) && kiloFooterInstalled) {
-			ctx.ui.setFooter(undefined);
-			kiloFooterInstalled = false;
-		}
-
-		if (!visible) {
-			usageRefresher.invalidate();
-			clearAmbientKiloStatuses(ctx);
-		}
-		return visible;
-	};
-
-	const publishCredits = (ctx: ExtensionContext, balance: number, revision: number): void => {
-		if (revision !== ambientUiRevision || !shouldShowAmbientKiloUi(ctx.model?.provider)) return;
-		themeStatuses.set(ctx, "kilo-credits", `💰 ${formatCredits(balance)}`);
-	};
+	const ambientUi = createAmbientKiloUi<ExtensionContext>({
+		getPreferences: () => preferences,
+		themeStatuses,
+		usageRefresher: createUsageRefresher({ fetchUsageEntries: fetchKiloUsageEntries }),
+		installFooter: (ctx) => installCustomFooter(pi, ctx, preferences.credits.enabled),
+		fetchBalance: (access) => fetchKiloBalance(access.token, access.organizationId),
+	});
 
 	// Fetch models at load time so the provider is immediately usable for
 	// --list-models, --model selection, and print mode before session_start fires.
 	let freeModels: KiloChatModelConfig[] = [];
 	let cachedAllModels: KiloChatModelConfig[] = [];
-	const usageRefresher = createUsageRefresher({ fetchUsageEntries: fetchKiloUsageEntries });
 	try {
 		if (startupAccess) {
 			cachedAllModels = await fetchKiloModels({
@@ -298,21 +257,16 @@ export default async function (pi: KiloExtensionApi) {
 			projectTrusted: ctx.isProjectTrusted?.() ?? false,
 		});
 		const access = getKiloAccess();
-		const usagePeriods = preferences.usage.periods;
-		const showAmbientUi = reconcileAmbientKiloUi(ctx, ctx.model?.provider);
-		const sessionStartRevision = ambientUiRevision;
+		ambientUi.reconcile(ctx, ctx.model?.provider);
+		const sessionStartRevision = ambientUi.currentRevision();
 
-		// Clear a stale credit status after logout when an interactive UI is available.
+		// Clear a stale credit status after logout.
 		if (!access) {
-			if (ctx.hasUI) themeStatuses.set(ctx, "kilo-credits", undefined);
+			ambientUi.clearCredits(ctx);
 			return;
 		}
 
-		if (showAmbientUi && ctx.hasUI && usagePeriods.length > 0) {
-			usageRefresher.refresh(access, usagePeriods, {
-				setStatus: (key, value) => themeStatuses.set(ctx, key, value),
-			});
-		}
+		ambientUi.refreshUsage(ctx, access);
 
 		try {
 			cachedAllModels = await fetchKiloModels({
@@ -335,72 +289,24 @@ export default async function (pi: KiloExtensionApi) {
 			});
 		}
 
-		// Fetch and display credits balance when enabled and an interactive UI is available.
-		const ambientUiIsCurrent =
-			sessionStartRevision === ambientUiRevision && shouldShowAmbientKiloUi(ctx.model?.provider);
-		if (showAmbientUi && ambientUiIsCurrent && ctx.hasUI && preferences.credits.enabled) {
-			const revision = ambientUiRevision;
-			try {
-				const balance = await fetchKiloBalance(access.token, access.organizationId);
-				if (balance !== null) publishCredits(ctx, balance, revision);
-			} catch (error) {
-				console.warn("[kilo] Failed to fetch balance:", error instanceof Error ? error.message : error);
-			}
-		}
+		// Skip credits if the model changed while the catalog was loading.
+		await ambientUi.refreshCredits(ctx, access, sessionStartRevision);
 	});
 
 	// Reconcile and refresh ambient Kilo UI when the selected model changes.
 	pi.on("model_select", async (event, ctx) => {
-		if (!reconcileAmbientKiloUi(ctx, event.model.provider)) return;
-		if (event.model.provider !== "kilo" && !preferences.display.showForOtherProviders) return;
+		if (!ambientUi.reconcile(ctx, event.model.provider)) return;
 
 		const access = getKiloAccess();
-		if (!access || !ctx.hasUI) return;
-
-		const usagePeriods = preferences.usage.periods;
-		if (usagePeriods.length > 0) {
-			usageRefresher.refresh(access, usagePeriods, {
-				setStatus: (key, value) => themeStatuses.set(ctx, key, value),
-			});
-		}
-
-		if (!preferences.credits.enabled) return;
-
-		const revision = ambientUiRevision;
-		try {
-			const balance = await fetchKiloBalance(access.token, access.organizationId);
-			if (balance !== null) publishCredits(ctx, balance, revision);
-		} catch (error) {
-			console.warn(
-				"[kilo] Failed to fetch balance on model select:",
-				error instanceof Error ? error.message : error,
-			);
-		}
+		if (access) await ambientUi.refresh(ctx, access);
 	});
 
 	// Refresh credits and opt-in usage after each turn.
 	pi.on("turn_end", async (_event, ctx) => {
-		if (!shouldShowAmbientKiloUi(ctx.model?.provider)) return;
+		if (!ambientUi.isVisible(ctx.model?.provider)) return;
 
 		const access = getKiloAccess();
-		const usagePeriods = preferences.usage.periods;
-		if (!access || !ctx.hasUI) return;
-
-		if (usagePeriods.length > 0) {
-			usageRefresher.refresh(access, usagePeriods, {
-				setStatus: (key, value) => themeStatuses.set(ctx, key, value),
-			});
-		}
-
-		if (!preferences.credits.enabled) return;
-
-		const revision = ambientUiRevision;
-		try {
-			const balance = await fetchKiloBalance(access.token, access.organizationId);
-			if (balance !== null) publishCredits(ctx, balance, revision);
-		} catch (error) {
-			console.warn("[kilo] Failed to fetch balance on turn end:", error instanceof Error ? error.message : error);
-		}
+		if (access) await ambientUi.refresh(ctx, access);
 	});
 
 	pi.on("session_shutdown", (_event, ctx) => {

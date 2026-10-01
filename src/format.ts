@@ -1,3 +1,8 @@
+export function formatCredits(balance: number): string {
+	if (balance >= 1000) return `$${(balance / 1000).toFixed(1)}k`;
+	return `$${balance.toFixed(2)}`;
+}
+
 export function formatTokens(count: number): string {
 	if (count < 1000) return count.toString();
 	if (count < 10000) return `${(count / 1000).toFixed(1)}k`;
